@@ -59,21 +59,26 @@ def refresh_fitbit_token():
         new_access_token = tokens['access_token']
         new_refresh_token = tokens['refresh_token']
 
-        # Update .env file
-        with open('.env', 'r') as f:
-            content = f.read()
+        # Update .env file if it exists (not available in GitHub Actions)
+        if os.path.exists('.env'):
+            with open('.env', 'r') as f:
+                content = f.read()
 
-        content = content.replace(
-            f'FITBIT_ACCESS_TOKEN={os.getenv("FITBIT_ACCESS_TOKEN")}',
-            f'FITBIT_ACCESS_TOKEN={new_access_token}'
-        )
-        content = content.replace(
-            f'FITBIT_REFRESH_TOKEN={refresh_token}',
-            f'FITBIT_REFRESH_TOKEN={new_refresh_token}'
-        )
+            content = content.replace(
+                f'FITBIT_ACCESS_TOKEN={os.getenv("FITBIT_ACCESS_TOKEN")}',
+                f'FITBIT_ACCESS_TOKEN={new_access_token}'
+            )
+            content = content.replace(
+                f'FITBIT_REFRESH_TOKEN={refresh_token}',
+                f'FITBIT_REFRESH_TOKEN={new_refresh_token}'
+            )
 
-        with open('.env', 'w') as f:
-            f.write(content)
+            with open('.env', 'w') as f:
+                f.write(content)
+
+        # Update environment variables in memory
+        os.environ['FITBIT_ACCESS_TOKEN'] = new_access_token
+        os.environ['FITBIT_REFRESH_TOKEN'] = new_refresh_token
 
         return new_access_token
     else:
@@ -89,7 +94,6 @@ def make_api_request_with_refresh(url, headers):
         try:
             new_token = refresh_fitbit_token()
             headers['Authorization'] = f'Bearer {new_token}'
-            # Retry with new token
             response = requests.get(url, headers=headers)
         except Exception as e:
             print(f"❌ Token refresh failed: {e}")
@@ -126,7 +130,6 @@ def get_fitbit_data(date):
         headers_v12['Accept-Language'] = 'en_US'
         headers_v12['Accept-Version'] = '1.2'
 
-        from datetime import datetime, timedelta
         next_day = (datetime.strptime(date, '%Y-%m-%d') +
                     timedelta(days=1)).strftime('%Y-%m-%d')
         response = make_api_request_with_refresh(
@@ -145,55 +148,57 @@ def get_fitbit_data(date):
                         if sleep_session.get('dateOfSleep') == date:
                             main_sleep = sleep_session
                             break
-                data['sleep_hours'] = round(
-                    main_sleep.get('minutesAsleep', 0) / 60, 1)
-                data['sleep_efficiency'] = main_sleep.get('efficiency', 0)
-                data['sleep_start'] = main_sleep.get('startTime', '')
-                data['sleep_end'] = main_sleep.get('endTime', '')
 
-                levels = main_sleep.get('levels', {})
+                if main_sleep:
+                    data['sleep_hours'] = round(
+                        main_sleep.get('minutesAsleep', 0) / 60, 1)
+                    data['sleep_efficiency'] = main_sleep.get('efficiency', 0)
+                    data['sleep_start'] = main_sleep.get('startTime', '')
+                    data['sleep_end'] = main_sleep.get('endTime', '')
 
-                if 'summary' in levels and levels['summary']:
-                    summary = levels['summary']
-                    data['deep_sleep'] = summary.get(
-                        'deep', {}).get('minutes', 0)
-                    data['light_sleep'] = summary.get(
-                        'light', {}).get('minutes', 0)
-                    data['rem_sleep'] = summary.get(
-                        'rem', {}).get('minutes', 0)
+                    levels = main_sleep.get('levels', {})
 
-                elif 'data' in levels and levels['data']:
-                    stage_minutes = {'deep': 0, 'light': 0, 'rem': 0}
+                    if 'summary' in levels and levels['summary']:
+                        summary = levels['summary']
+                        data['deep_sleep'] = summary.get(
+                            'deep', {}).get('minutes', 0)
+                        data['light_sleep'] = summary.get(
+                            'light', {}).get('minutes', 0)
+                        data['rem_sleep'] = summary.get(
+                            'rem', {}).get('minutes', 0)
 
-                    for period in levels['data']:
-                        stage = period.get('level', '')
-                        if stage in stage_minutes:
-                            duration_seconds = period.get('seconds', 0)
-                            stage_minutes[stage] += duration_seconds // 60
+                    elif 'data' in levels and levels['data']:
+                        stage_minutes = {'deep': 0, 'light': 0, 'rem': 0}
 
-                    if 'shortData' in levels:
-                        for period in levels.get('shortData', []):
+                        for period in levels['data']:
                             stage = period.get('level', '')
                             if stage in stage_minutes:
                                 duration_seconds = period.get('seconds', 0)
                                 stage_minutes[stage] += duration_seconds // 60
 
-                    data['deep_sleep'] = stage_minutes['deep']
-                    data['light_sleep'] = stage_minutes['light']
-                    data['rem_sleep'] = stage_minutes['rem']
+                        if 'shortData' in levels:
+                            for period in levels.get('shortData', []):
+                                stage = period.get('level', '')
+                                if stage in stage_minutes:
+                                    duration_seconds = period.get('seconds', 0)
+                                    stage_minutes[stage] += duration_seconds // 60
 
-                else:
-                    minute_data = main_sleep.get('minuteData', [])
-                    if minute_data:
-                        asleep_minutes = sum(
-                            1 for m in minute_data if m.get('value') == '1')
-                        data['light_sleep'] = asleep_minutes
-                        data['deep_sleep'] = 0
-                        data['rem_sleep'] = 0
+                        data['deep_sleep'] = stage_minutes['deep']
+                        data['light_sleep'] = stage_minutes['light']
+                        data['rem_sleep'] = stage_minutes['rem']
+
                     else:
-                        data['deep_sleep'] = 0
-                        data['light_sleep'] = 0
-                        data['rem_sleep'] = 0
+                        minute_data = main_sleep.get('minuteData', [])
+                        if minute_data:
+                            asleep_minutes = sum(
+                                1 for m in minute_data if m.get('value') == '1')
+                            data['light_sleep'] = asleep_minutes
+                            data['deep_sleep'] = 0
+                            data['rem_sleep'] = 0
+                        else:
+                            data['deep_sleep'] = 0
+                            data['light_sleep'] = 0
+                            data['rem_sleep'] = 0
 
         # Heart rate data (resting + zones)
         response = make_api_request_with_refresh(
@@ -281,7 +286,9 @@ def update_notion_database(date, fitbit_data, food_data=None):
                 "equals": date
             }
         }
-    )  # Format date as Japanese style for display name
+    )
+
+    # Format date as Japanese style for display name
     date_obj = datetime.strptime(date, '%Y-%m-%d')
     date_display = f"{date_obj.year}年{date_obj.month:02d}月{date_obj.day:02d}日"
 
@@ -352,22 +359,6 @@ def update_notion_database(date, fitbit_data, food_data=None):
     if fitbit_data.get('sodium'):
         properties["ナトリウム (g)"] = {"number": fitbit_data['sodium']}
 
-    # --- Gemini API / Google Drive food photo tracking (disabled) ---
-    # If you want to re-enable this feature, uncomment the following block
-    #
-    # if food_data:
-    #     if food_data.get('breakfast'):
-    #         properties["朝食"] = {"rich_text": [
-    #             {"text": {"content": format_meal_text(food_data['breakfast'])}}]}
-    #     if food_data.get('lunch'):
-    #         properties["昼食"] = {"rich_text": [
-    #             {"text": {"content": format_meal_text(food_data['lunch'])}}]}
-    #     if food_data.get('dinner'):
-    #         properties["夕食"] = {"rich_text": [
-    #             {"text": {"content": format_meal_text(food_data['dinner'])}}]}
-    #     properties["食事写真処理済み"] = {"checkbox": True}
-    # ---
-
     try:
         if existing_pages['results']:
             # Update existing page
@@ -384,29 +375,6 @@ def update_notion_database(date, fitbit_data, food_data=None):
 
     except Exception as e:
         print(f"❌ Error updating Notion: {e}")
-
-
-def main():
-    """Main sync function"""
-    print("🔄 Starting Fitbit → Notion sync...")
-
-    date = get_yesterday_date()
-    print(f"📅 Syncing data for: {date}")
-
-    # Get Fitbit data
-    fitbit_data = get_fitbit_data(date)
-    if not fitbit_data:
-        print("❌ Failed to fetch Fitbit data")
-        return
-
-    print("📊 Fitbit data fetched:")
-    for key, value in fitbit_data.items():
-        print(f"  {key}: {value}")
-
-    # Update Notion
-    update_notion_database(date, fitbit_data)
-
-    print("🎉 Sync completed!")
 
 
 def main():
@@ -433,3 +401,7 @@ def main():
         update_notion_database(date, fitbit_data)
 
     print("🎉 Sync completed!")
+
+
+if __name__ == "__main__":
+    main()
