@@ -1,161 +1,189 @@
-# Fitbit to Notion Sync with AI Food Tracking
+# Fitbit to Notion Health Data Sync
 
-Automated daily sync of Fitbit health data and AI-powered food photo analysis to a Notion database using GitHub Actions.
+Google Pixel WatchなどのFitbitデバイスで収集したヘルスデータを、GitHub Actionsを使って自動的にNotionデータベースに同期するツールです。
 
-## Features
+## 概要
 
-### 🏃‍♂️ **Fitbit Health Data**
-- **Automated Daily Sync**: Runs every day at 9 AM Zurich time
-- **Manual Backfill**: Fill in missing historical data for any date range
-- **Comprehensive Health Metrics**:
-  - Activity: Steps, distance, calories, active minutes
-  - Sleep: Total hours, efficiency, start/end times, sleep stages (deep/light/REM)
-  - Heart Rate: Resting HR, fat burn/cardio/peak zones
-  - HRV: Daily and deep sleep heart rate variability
-  - Body: Weight, BMI, body fat percentage (if available)
+Fitbit APIからヘルスデータを取得し、Notion APIを通じてNotionデータベースに書き込みます。GitHub Actionsによるスケジュール実行で、設定後は完全自動で動作します。
 
-### 🍽️ **AI Food Photo Tracking**
-- **Google Drive Integration**: Upload food photos to your designated Drive folder
-- **Original Timestamp Extraction**: Uses EXIF data to get when photos were actually taken
-- **Smart Meal Classification**: Automatically categorizes by time (breakfast/lunch/dinner)
-- **AI Food Recognition**: Gemini 2.0 Flash provides concise food descriptions
-- **Manual Sync Option**: On-demand processing via GitHub Actions
+### 同期されるデータ
 
-## Setup
+**アクティビティ:** 歩数、距離 (km)、消費カロリー (kcal)、アクティブ時間 (分)
 
-### 1. Fitbit API Setup
-1. Go to https://dev.fitbit.com/apps/new
-2. Create a "Server" application type
-3. Note your Client ID and Client Secret
+**睡眠:** 睡眠時間、睡眠効率、深い睡眠・浅い睡眠・レム睡眠 (分)、就寝時刻、起床時刻
 
-### 2. Notion Integration Setup
-1. Go to https://www.notion.so/my-integrations
-2. Create a new integration
-3. Copy the integration token
-4. Share your health tracking database with the integration
+**心拍:** 安静時心拍数 (bpm)、脂肪燃焼ゾーン・有酸素ゾーン・ピークゾーン (分)
 
-### 3. Google Drive & AI Setup
-1. **Google Cloud Console**: Enable Drive API at https://console.cloud.google.com/
-2. **Create OAuth credentials** for your application
-3. **Create Drive folder** for food photos
-4. **Get Gemini API key** from https://aistudio.google.com/app/apikey
+**HRV:** 日次RMSSD (ms)、深睡眠RMSSD (ms)
 
-### 4. Get OAuth Tokens
-Run the OAuth helper to get your personal access tokens:
-```bash
-python oauth_helper.py  # For Fitbit
-python setup_drive_oauth.py  # For Google Drive (if needed)
+**体組成:** 体重 (kg)、BMI、体脂肪率 (%)
+
+**栄養 (Fitbitアプリでの食事ログ):** 摂取カロリー (kcal)、炭水化物 (g)、脂質 (g)、たんぱく質 (g)、食物繊維 (g)、ナトリウム (g)
+
+## 必要なアカウント
+
+- GitHubアカウント（無料）
+- Fitbitアカウント（Pixel Watch利用者は既に所持）
+- Notionアカウント（無料）
+
+## セットアップ
+
+### 1. Fitbit APIアプリの作成
+
+https://dev.fitbit.com/apps/new にアクセスし、以下の設定でアプリを登録します。
+
+- **OAuth 2.0 Application Type:** Server
+- **Redirect URL:** http://localhost:8080
+
+登録後に発行される Client ID と Client Secret をメモしてください。
+
+### 2. Notion側の準備
+
+#### インテグレーションの作成
+
+https://www.notion.so/my-integrations にアクセスし、新しいインテグレーションを作成します。作成後に表示される Internal Integration Token（`secret_` で始まる文字列）をメモしてください。
+
+#### データベースの作成
+
+Notionで新しいデータベース（テーブルビュー）を作成します。プロパティの追加は `update_notion_schema.py` で自動的に行えます。
+
+#### インテグレーションとの接続
+
+作成したデータベースの「...」メニューから「コネクトを追加」を選び、作成したインテグレーションを接続してください。
+
+#### データベースIDの取得
+
+データベースをブラウザで開き、URLの中の32文字の英数字部分がDatabase IDです。
+
+```
+https://www.notion.so/ワークスペース名/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx?v=yyyyyyyy
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                      この部分がDatabase ID
 ```
 
-### 5. GitHub Secrets Setup
-**Required for automation:** Copy values from your `.env` file to GitHub Secrets.
+### 3. Fitbit OAuthトークンの取得
 
-Go to your repository → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
+以下のURLの `YOUR_CLIENT_ID` を自分のClient IDに置き換えてブラウザでアクセスします。
 
-**Fitbit & Notion:**
-- `FITBIT_CLIENT_ID` - Your Fitbit app Client ID
-- `FITBIT_CLIENT_SECRET` - Your Fitbit app Client Secret  
-- `FITBIT_ACCESS_TOKEN` - Generated from OAuth flow
-- `FITBIT_REFRESH_TOKEN` - Generated from OAuth flow
-- `NOTION_TOKEN` - Your Notion integration token
-- `NOTION_DATABASE_ID` - Your Notion database ID (from database URL)
+```
+https://www.fitbit.com/oauth2/authorize?response_type=code&client_id=YOUR_CLIENT_ID&redirect_uri=http%3A%2F%2Flocalhost%3A8080&scope=activity+heartrate+sleep+weight+profile+nutrition&expires_in=31536000
+```
 
-**Google Drive & AI:**
-- `GOOGLE_CLIENT_ID` - Your Google Cloud OAuth Client ID
-- `GOOGLE_CLIENT_SECRET` - Your Google Cloud OAuth Client Secret
-- `GOOGLE_ACCESS_TOKEN` - Generated from Drive OAuth flow
-- `GOOGLE_API_KEY` - Your Gemini API key
+認可後、ブラウザのURLバーに表示される `code=` と `#` の間の文字列をコピーし、以下のcurlコマンドを実行します。
 
-### 6. Notion Database Schema
-Run the schema updater to add food tracking columns:
+```bash
+curl -X POST https://api.fitbit.com/oauth2/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -u "YOUR_CLIENT_ID:YOUR_CLIENT_SECRET" \
+  -d "grant_type=authorization_code" \
+  -d "code=COPIED_CODE" \
+  -d "redirect_uri=http://localhost:8080"
+```
+
+レスポンスに含まれる `access_token` と `refresh_token` をメモしてください。
+
+### 4. 環境変数の設定
+
+#### ローカル実行用
+
+プロジェクトルートに `.env` ファイルを作成します。
+
+```
+FITBIT_CLIENT_ID=your_client_id
+FITBIT_CLIENT_SECRET=your_client_secret
+FITBIT_ACCESS_TOKEN=your_access_token
+FITBIT_REFRESH_TOKEN=your_refresh_token
+NOTION_TOKEN=your_notion_token
+NOTION_DATABASE_ID=your_database_id
+```
+
+#### GitHub Actions用
+
+リポジトリの Settings > Secrets and variables > Actions > New repository secret から、上記6つの値をそれぞれ登録します。
+
+### 5. Notionデータベースのスキーマ設定
+
+以下のコマンドで必要なプロパティが自動的にデータベースに追加されます。
+
 ```bash
 python update_notion_schema.py
 ```
 
-**Health Metrics Columns:**
-- Date (Date)
-- Steps, Distance (km), Calories, Active Minutes (Numbers)
-- Sleep Hours, Sleep Efficiency, Deep/Light/REM Sleep (Numbers)
-- Sleep Start, Sleep End (Text)
-- Wake Resting HR, Fat Burn/Cardio/Peak Zone minutes (Numbers)
-- HRV Daily/Deep RMSSD, Weight, BMI, Body Fat % (Numbers)
+### 6. 依存パッケージのインストール
 
-**Food Tracking Columns:**
-- Breakfast, Lunch, Dinner (Rich Text)
-- Food Photos Processed (Checkbox)
-
-## Usage
-
-### 🔄 **Automatic Daily Sync**
-The workflow runs automatically every day at 9 AM Zurich time via GitHub Actions, processing:
-- Yesterday's Fitbit health data
-- Food photos uploaded to your Drive folder
-
-### 🍽️ **Food Photo Workflow**
-1. **Take photos** of your meals during the day
-2. **Upload to Drive folder** each evening
-3. **Automatic processing** next morning extracts:
-   - Original photo timestamps (when you took the photo)
-   - AI food descriptions (e.g. "latte", "fried eggs with tomatoes")
-   - Meal classification (breakfast/lunch/dinner based on photo time)
-
-### 🛠️ **Manual Operations**
-
-**Manual Sync (including today's data):**
 ```bash
-# Local manual sync
+pip install -r requirements.txt
+```
+
+## 使い方
+
+### 自動同期（GitHub Actions）
+
+設定完了後、GitHub Actionsが10分ごとに自動実行され、当日と前日のデータをNotionに同期します。前日のデータも同期する理由は、深夜に確定する睡眠データなどを確実に取り込むためです。
+
+GitHub Actions画面から手動実行（Run workflow）も可能です。
+
+同じ日付のデータは上書き更新されるため、複数回実行しても行が重複することはありません。
+
+### 手動同期（ローカル）
+
+```bash
+# 当日のデータを同期
 python manual_sync_today.py
-
-# Or use GitHub Actions:
-# Go to Actions → "Manual Sync Today's Data" → Run workflow
 ```
 
-**Fitbit-only sync:**
+### 過去データの一括取り込み
+
 ```bash
-python sync_fitbit_notion.py
+# Notionの最も古いエントリから指定日まで自動で遡って取り込み
+python auto_backfill.py --target-start 2020-04-24
+
+# 期間を指定して取り込み
+python backfill_fitbit_data.py --start-date 2024-01-01 --end-date 2024-12-31
+
+# 直近7日分を取り込み
+python backfill_fitbit_data.py --last-week
 ```
 
-**Historical backfill:**
+`auto_backfill.py` はNotionデータベースの最も古い日付を自動検出し、そこから指定した開始日まで遡ります。途中で中断しても、再実行すれば続きから自動で再開します。
+
+大量の過去データを取り込む場合は、Macのスリープを防止してから実行してください。
+
 ```bash
-python backfill_fitbit_data.py --start-date 2025-07-01 --end-date 2025-07-10
+# 別ターミナルで実行（完了後 Ctrl+C で停止）
+caffeinate -i
 ```
 
-## Files
+## ファイル構成
 
-**Core Scripts:**
-- `sync_fitbit_notion.py` - Main daily sync script (Fitbit + food photos)
-- `google_drive_food.py` - Google Drive food photo processing with AI
-- `manual_sync_today.py` - Manual sync for current day testing
-- `backfill_fitbit_data.py` - Historical Fitbit data backfill
-- `update_notion_schema.py` - Add food tracking columns to Notion
+| ファイル                                 | 説明                                           |
+| ---------------------------------------- | ---------------------------------------------- |
+| `sync_fitbit_notion.py`                  | メイン同期スクリプト（GitHub Actionsから実行） |
+| `manual_sync_today.py`                   | ローカルでの手動同期用                         |
+| `auto_backfill.py`                       | Notionの最古エントリから自動バックフィル       |
+| `backfill_fitbit_data.py`                | 期間指定での過去データ取り込み                 |
+| `update_notion_schema.py`                | Notionデータベースのプロパティ自動追加         |
+| `oauth_helper.py`                        | Fitbit OAuthトークンのリフレッシュ             |
+| `.github/workflows/sync-health-data.yml` | GitHub Actionsワークフロー定義                 |
 
-**GitHub Actions:**
-- `.github/workflows/sync-health-data.yml` - Daily automated sync
-- `.github/workflows/manual-sync-today.yml` - On-demand manual sync
-- `.github/workflows/manual-backfill.yml` - Historical data backfill
+## Fitbit APIのレート制限
 
-## AI Food Recognition
+Fitbit APIには1時間あたり150リクエストの上限があります。1回の同期で14リクエスト（当日+前日分）を消費するため、10分間隔での自動実行は上限内に収まります。
 
-- **Powered by**: Gemini 2.0 Flash (state-of-the-art multimodal AI)
-- **Output**: Concise food descriptions ("latte", "pizza", "fried eggs with tomatoes")
-- **Cost**: Free (up to 1,500 requests/day)
-- **Privacy**: Images analyzed via Google's secure platform
+過去データのバックフィル時は、スクリプト内で自動的にAPIコール間に遅延を挿入し、レート制限に引っかかった場合は自動リトライを行います。
 
-## Privacy & Security
+## トラブルシューティング
 
-- **GitHub Secrets**: All API keys stored securely
-- **No data retention**: Personal health data never committed to repository
-- **Temporary processing**: Food photos downloaded temporarily for AI analysis only
-- **Original timestamps**: System preserves when photos were actually taken
+**データが同期されない場合:** Pixel WatchからFitbitアプリへの同期が完了しているか確認してください。Fitbitアプリに最新データが反映されていればAPI側は問題ありません。
 
-## Troubleshooting
+**トークンエラーが出る場合:** Fitbitのアクセストークンには有効期限があります。通常はリフレッシュトークンで自動更新されますが、長期間使用しなかった場合はOAuth認証を再実行し、`.env` とGitHub Secretsを更新してください。
 
-1. **Missing Fitbit Data**: Check device sync and token expiration
-2. **Food Photos Not Found**: Verify Drive folder permissions and API enablement
-3. **Token Errors**: Re-run OAuth flows and update GitHub Secrets
-4. **Notion Errors**: Check database ID and integration permissions
-5. **AI Analysis Issues**: Verify Gemini API key and request limits
+**Notionにデータが入らない場合:** データベースIDが正しいか、インテグレーションがデータベースに接続されているか確認してください。
 
-## License
+**栄養データが取得できない場合:** OAuthの認可時に `nutrition` スコープが含まれている必要があります。含まれていない場合はトークンを再取得してください。
 
-MIT License - See LICENSE file for details
+**GitHub Actionsが失敗する場合:** リポジトリの Settings > Secrets and variables > Actions に6つのSecretがすべて登録されているか確認してください。
+
+## ライセンス
+
+MIT License
