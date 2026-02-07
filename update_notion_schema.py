@@ -23,19 +23,19 @@ def update_database_schema():
     
     # New properties for food tracking
     new_properties = {
-        "Breakfast": {
+        "朝食": {
             "type": "rich_text",
             "rich_text": {}
         },
-        "Lunch": {
-            "type": "rich_text", 
-            "rich_text": {}
-        },
-        "Dinner": {
+        "昼食": {
             "type": "rich_text",
             "rich_text": {}
         },
-        "Food Photos Processed": {
+        "夕食": {
+            "type": "rich_text",
+            "rich_text": {}
+        },
+        "食事写真処理済み": {
             "type": "checkbox",
             "checkbox": {}
         }
