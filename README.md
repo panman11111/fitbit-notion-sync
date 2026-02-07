@@ -1,6 +1,6 @@
 # Fitbit to Notion Health Data Sync
 
-Google Pixel WatchなどのFitbitデバイスで収集したヘルスデータを、GitHub Actionsを使って自動的にNotionデータベースに同期するツールです。
+> このプロジェクトは [radusqrt/fitbit-notion-sync](https://github.com/radusqrt/fitbit-notion-sync) をベースに、日本語対応・栄養データ同期・Gemini連携の無効化などのカスタマイズを行ったものです。
 
 ## 概要
 
