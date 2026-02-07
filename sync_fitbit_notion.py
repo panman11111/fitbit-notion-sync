@@ -406,5 +406,27 @@ def main():
     print("🎉 Sync completed!")
 
 
-if __name__ == "__main__":
-    main()
+def main():
+    """Main sync function"""
+    print("🔄 Starting Fitbit → Notion sync...")
+
+    # Sync both today and yesterday
+    today = datetime.now().strftime('%Y-%m-%d')
+    yesterday = get_yesterday_date()
+
+    for date in [yesterday, today]:
+        print(f"📅 Syncing data for: {date}")
+
+        fitbit_data = get_fitbit_data(date)
+        if not fitbit_data:
+            print(f"❌ Failed to fetch Fitbit data for {date}")
+            continue
+
+        print("📊 Fitbit data fetched:")
+        for key, value in fitbit_data.items():
+            if value is not None and value != 0:
+                print(f"  {key}: {value}")
+
+        update_notion_database(date, fitbit_data)
+
+    print("🎉 Sync completed!")
