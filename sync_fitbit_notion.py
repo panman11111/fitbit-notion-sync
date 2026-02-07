@@ -281,10 +281,13 @@ def update_notion_database(date, fitbit_data, food_data=None):
                 "equals": date
             }
         }
-    )
+    )  # Format date as Japanese style for display name
+    date_obj = datetime.strptime(date, '%Y-%m-%d')
+    date_display = f"{date_obj.year}年{date_obj.month:02d}月{date_obj.day:02d}日"
 
     # Prepare properties with all Fitbit metrics
     properties = {
+        "名前": {"title": [{"text": {"content": date_display}}]},
         "日付": {"date": {"start": date}},
         "歩数": {"number": fitbit_data.get('steps', 0)},
         "距離 (km)": {"number": round(fitbit_data.get('distance', 0), 2)},
