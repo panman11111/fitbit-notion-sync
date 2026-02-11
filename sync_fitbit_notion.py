@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
 Sync Fitbit data to Notion database
-Fetches yesterday's health metrics and updates Notion
+Fetches yesterday's and today's health metrics and updates Notion
 """
 
 import os
+import subprocess
 import requests
 from datetime import datetime, timedelta
 from notion_client import Client
@@ -18,7 +19,7 @@ from dotenv import load_dotenv
 #     from google_drive_food import process_drive_food_photos, format_meal_text
 #     GOOGLE_DRIVE_AVAILABLE = True
 # except ImportError as e:
-#     print(f"⚠️ Google Drive integration not available: {e}")
+#     print(f"Google Drive integration not available: {e}")
 #     GOOGLE_DRIVE_AVAILABLE = False
 #     def process_drive_food_photos(date):
 #         return None
@@ -31,6 +32,25 @@ def get_yesterday_date():
     """Get yesterday's date in YYYY-MM-DD format"""
     yesterday = datetime.now() - timedelta(days=1)
     return yesterday.strftime('%Y-%m-%d')
+
+
+def update_github_secret(secret_name, secret_value):
+    """Update a GitHub Actions repository secret via gh CLI"""
+    try:
+        result = subprocess.run(
+            ['gh', 'secret', 'set', secret_name, '--body', secret_value],
+            capture_output=True, text=True, timeout=30
+        )
+        if result.returncode == 0:
+            print(f"  GitHub Secret '{secret_name}' updated successfully")
+        else:
+            print(
+                f"  Failed to update GitHub Secret '{secret_name}': {result.stderr}")
+    except FileNotFoundError:
+        print(
+            f"  gh CLI not found, skipping GitHub Secret update for '{secret_name}'")
+    except Exception as e:
+        print(f"  Error updating GitHub Secret '{secret_name}': {e}")
 
 
 def refresh_fitbit_token():
@@ -59,7 +79,7 @@ def refresh_fitbit_token():
         new_access_token = tokens['access_token']
         new_refresh_token = tokens['refresh_token']
 
-        # Update .env file if it exists (not available in GitHub Actions)
+        # Update .env file if it exists (local environment)
         if os.path.exists('.env'):
             with open('.env', 'r') as f:
                 content = f.read()
@@ -80,6 +100,12 @@ def refresh_fitbit_token():
         os.environ['FITBIT_ACCESS_TOKEN'] = new_access_token
         os.environ['FITBIT_REFRESH_TOKEN'] = new_refresh_token
 
+        # GitHub Actions: persist new tokens to Secrets for next run
+        if os.environ.get('GITHUB_ACTIONS') == 'true':
+            print("  Updating GitHub Secrets with new tokens...")
+            update_github_secret('FITBIT_ACCESS_TOKEN', new_access_token)
+            update_github_secret('FITBIT_REFRESH_TOKEN', new_refresh_token)
+
         return new_access_token
     else:
         raise Exception(f"Failed to refresh token: {response.text}")
@@ -90,13 +116,13 @@ def make_api_request_with_refresh(url, headers):
     response = requests.get(url, headers=headers)
 
     if response.status_code == 401:  # Token expired
-        print("🔄 Access token expired, refreshing...")
+        print("  Access token expired, refreshing...")
         try:
             new_token = refresh_fitbit_token()
             headers['Authorization'] = f'Bearer {new_token}'
             response = requests.get(url, headers=headers)
         except Exception as e:
-            print(f"❌ Token refresh failed: {e}")
+            print(f"  Token refresh failed: {e}")
 
     return response
 
@@ -266,7 +292,7 @@ def get_fitbit_data(date):
         return data
 
     except requests.exceptions.RequestException as e:
-        print(f"❌ Error fetching Fitbit data: {e}")
+        print(f"  Error fetching Fitbit data: {e}")
         return None
 
 
@@ -364,43 +390,43 @@ def update_notion_database(date, fitbit_data, food_data=None):
             # Update existing page
             page_id = existing_pages['results'][0]['id']
             notion.pages.update(page_id=page_id, properties=properties)
-            print(f"✅ Updated existing entry for {date}")
+            print(f"  Updated existing entry for {date}")
         else:
             # Create new page
             notion.pages.create(
                 parent={"database_id": database_id},
                 properties=properties
             )
-            print(f"✅ Created new entry for {date}")
+            print(f"  Created new entry for {date}")
 
     except Exception as e:
-        print(f"❌ Error updating Notion: {e}")
+        print(f"  Error updating Notion: {e}")
 
 
 def main():
     """Main sync function"""
-    print("🔄 Starting Fitbit → Notion sync...")
+    print("Starting Fitbit to Notion sync...")
 
     # Sync both today and yesterday
     today = datetime.now().strftime('%Y-%m-%d')
     yesterday = get_yesterday_date()
 
     for date in [yesterday, today]:
-        print(f"📅 Syncing data for: {date}")
+        print(f"Syncing data for: {date}")
 
         fitbit_data = get_fitbit_data(date)
         if not fitbit_data:
-            print(f"❌ Failed to fetch Fitbit data for {date}")
+            print(f"  Failed to fetch Fitbit data for {date}")
             continue
 
-        print("📊 Fitbit data fetched:")
+        print("  Fitbit data fetched:")
         for key, value in fitbit_data.items():
             if value is not None and value != 0:
-                print(f"  {key}: {value}")
+                print(f"    {key}: {value}")
 
         update_notion_database(date, fitbit_data)
 
-    print("🎉 Sync completed!")
+    print("Sync completed!")
 
 
 if __name__ == "__main__":
