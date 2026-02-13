@@ -7,6 +7,7 @@ Can be run manually with custom date ranges or defaults to last week
 import os
 import sys
 import argparse
+import base64
 import requests
 import time
 from datetime import datetime, timedelta
@@ -46,7 +47,6 @@ def refresh_fitbit_token():
         'refresh_token': refresh_token
     }
 
-    import base64
     credentials = base64.b64encode(
         f"{client_id}:{client_secret}".encode()).decode()
     headers = {
@@ -61,13 +61,30 @@ def refresh_fitbit_token():
         new_access_token = tokens['access_token']
         new_refresh_token = tokens['refresh_token']
 
+        # Update .env file if it exists (local environment)
+        if os.path.exists('.env'):
+            with open('.env', 'r') as f:
+                content = f.read()
+
+            content = content.replace(
+                f'FITBIT_ACCESS_TOKEN={os.getenv("FITBIT_ACCESS_TOKEN")}',
+                f'FITBIT_ACCESS_TOKEN={new_access_token}'
+            )
+            content = content.replace(
+                f'FITBIT_REFRESH_TOKEN={refresh_token}',
+                f'FITBIT_REFRESH_TOKEN={new_refresh_token}'
+            )
+
+            with open('.env', 'w') as f:
+                f.write(content)
+
         os.environ['FITBIT_ACCESS_TOKEN'] = new_access_token
         os.environ['FITBIT_REFRESH_TOKEN'] = new_refresh_token
 
-        print("   🔄 Access token refreshed automatically")
+        print("   Access token refreshed automatically")
         return new_access_token
     else:
-        print(f"   ❌ Failed to refresh token: {response.status_code}")
+        print(f"   Failed to refresh token: {response.status_code}")
         return None
 
 
@@ -82,14 +99,14 @@ def make_api_request(url, headers, description="API call"):
         if response.status_code == 200:
             return response
         elif response.status_code == 401:
-            print(f"   🔄 Token expired for {description}, refreshing...")
+            print(f"   Token expired for {description}, refreshing...")
             new_token = refresh_fitbit_token()
             if new_token:
                 headers['Authorization'] = f'Bearer {new_token}'
                 response = requests.get(url, headers=headers)
                 if response.status_code == 200:
                     return response
-            print(f"   ❌ {description} failed even after token refresh")
+            print(f"   {description} failed even after token refresh")
             break
         elif response.status_code == 429:
             retry_delay = base_delay * (2 ** attempt)
@@ -137,7 +154,6 @@ def get_fitbit_data(date):
         headers_v12['Accept-Language'] = 'en_US'
         headers_v12['Accept-Version'] = '1.2'
 
-        from datetime import datetime, timedelta
         next_day = (datetime.strptime(date, '%Y-%m-%d') +
                     timedelta(days=1)).strftime('%Y-%m-%d')
         response = make_api_request(
@@ -284,7 +300,7 @@ def get_fitbit_data(date):
         return data
 
     except requests.exceptions.RequestException as e:
-        print(f"❌ Error fetching Fitbit data for {date}: {e}")
+        print(f"  Error fetching Fitbit data for {date}: {e}")
         return None
 
 
@@ -390,7 +406,7 @@ def update_notion_database(date, fitbit_data):
             return "created"
 
     except Exception as e:
-        print(f"❌ Error updating Notion for {date}: {e}")
+        print(f"  Error updating Notion for {date}: {e}")
         return "error"
 
 
@@ -424,34 +440,34 @@ def main():
     start_date, end_date = get_date_range(
         args.start_date, args.end_date, args.last_week)
 
-    print("🔄 Starting Fitbit → Notion backfill...")
-    print(f"📅 Date range: {start_date} to {end_date}")
+    print("Starting Fitbit to Notion backfill...")
+    print(f"Date range: {start_date} to {end_date}")
 
     dates = generate_date_list(start_date, end_date)
 
-    print(f"📊 Processing {len(dates)} days...")
+    print(f"Processing {len(dates)} days...")
 
     created = 0
     updated = 0
     errors = 0
 
-    for date in dates:
-        print(f"\n📅 Processing {date}...")
+    for i, date in enumerate(dates):
+        print(f"\n[{i+1}/{len(dates)}] Processing {date}...")
 
         fitbit_data = get_fitbit_data(date)
         if not fitbit_data:
-            print(f"❌ Failed to fetch Fitbit data for {date}")
+            print(f"  Failed to fetch Fitbit data for {date}")
             errors += 1
             continue
 
-        print(f"   Steps: {fitbit_data.get('steps', 0)}, Sleep: {fitbit_data.get('sleep_hours', 0)}h, HRV: {fitbit_data.get('hrv_daily_rmssd', 'N/A')}")
+        print(f"  Steps: {fitbit_data.get('steps', 0)}, Sleep: {fitbit_data.get('sleep_hours', 0)}h, HRV: {fitbit_data.get('hrv_daily_rmssd', 'N/A')}")
 
         result = update_notion_database(date, fitbit_data)
         if result == "created":
-            print(f"✅ Created entry for {date}")
+            print(f"  Created entry for {date}")
             created += 1
         elif result == "updated":
-            print(f"✅ Updated entry for {date}")
+            print(f"  Updated entry for {date}")
             updated += 1
         else:
             errors += 1
@@ -459,8 +475,8 @@ def main():
         if date != dates[-1]:
             time.sleep(5)
 
-    print(f"\n🎉 Backfill completed!")
-    print(f"📊 Results: {created} created, {updated} updated, {errors} errors")
+    print(f"\nBackfill completed!")
+    print(f"Results: {created} created, {updated} updated, {errors} errors")
 
 
 if __name__ == "__main__":

@@ -1,10 +1,13 @@
+よくまとまっています。今回の変更点を反映して更新します。
 # Fitbit to Notion Health Data Sync
 
-> このプロジェクトは [radusqrt/fitbit-notion-sync](https://github.com/radusqrt/fitbit-notion-sync) をベースに、日本語対応・栄養データ同期・Gemini連携の無効化などのカスタマイズを行ったものです。
+> このプロジェクトは [radusqrt/fitbit-notion-sync](https://github.com/radusqrt/fitbit-notion-sync) をベースに、日本語対応、栄養データ同期、GitHub Secrets自動更新などのカスタマイズを行ったものです。
 
 ## 概要
 
-Fitbit APIからヘルスデータを取得し、Notion APIを通じてNotionデータベースに書き込みます。GitHub Actionsによるスケジュール実行で、設定後は完全自動で動作します。
+Fitbit APIからヘルスデータを取得し、Notion APIを通じてNotionデータベースに書き込みます。GitHub Actionsによる10分間隔のスケジュール実行で、設定後は完全自動で動作します。
+
+Fitbit OAuthのリフレッシュトークンは使い捨て（one-time use）であるため、トークンリフレッシュ時に新しいトークンペアをGitHub Secretsへ自動的に書き戻す仕組みを実装しています。これにより、手動でのトークン更新は不要です。
 
 ### 同期されるデータ
 
@@ -82,7 +85,20 @@ curl -X POST https://api.fitbit.com/oauth2/token \
 
 レスポンスに含まれる `access_token` と `refresh_token` をメモしてください。
 
-### 4. 環境変数の設定
+### 4. GitHub Personal Access Token (PAT) の発行
+
+GitHub Actionsでトークンリフレッシュ後にGitHub Secretsを自動更新するために必要です。
+
+GitHub の Settings（アカウント設定） > Developer settings > Personal access tokens > Fine-grained tokens > Generate new token から作成します。
+
+- **Token name:** 任意（例: fitbit-sync-token-updater）
+- **Expiration:** No expiration を推奨
+- **Repository access:** Only select repositories で対象リポジトリを選択
+- **Permissions:** Repository permissions > Secrets > Read and write
+
+生成されたトークン（`github_pat_` で始まる文字列）をメモしてください。
+
+### 5. 環境変数の設定
 
 #### ローカル実行用
 
@@ -99,9 +115,19 @@ NOTION_DATABASE_ID=your_database_id
 
 #### GitHub Actions用
 
-リポジトリの Settings > Secrets and variables > Actions > New repository secret から、上記6つの値をそれぞれ登録します。
+リポジトリの Settings > Secrets and variables > Actions > New repository secret から、以下の7つの値を登録します。
 
-### 5. Notionデータベースのスキーマ設定
+| Secret名             | 内容                             |
+| -------------------- | -------------------------------- |
+| FITBIT_CLIENT_ID     | Fitbit APIのClient ID            |
+| FITBIT_CLIENT_SECRET | Fitbit APIのClient Secret        |
+| FITBIT_ACCESS_TOKEN  | Fitbit OAuthアクセストークン     |
+| FITBIT_REFRESH_TOKEN | Fitbit OAuthリフレッシュトークン |
+| NOTION_TOKEN         | NotionインテグレーションToken    |
+| NOTION_DATABASE_ID   | NotionデータベースID             |
+| PAT_TOKEN            | GitHub Personal Access Token     |
+
+### 6. Notionデータベースのスキーマ設定
 
 以下のコマンドで必要なプロパティが自動的にデータベースに追加されます。
 
@@ -109,7 +135,7 @@ NOTION_DATABASE_ID=your_database_id
 python update_notion_schema.py
 ```
 
-### 6. 依存パッケージのインストール
+### 7. 依存パッケージのインストール
 
 ```bash
 pip install -r requirements.txt
@@ -125,6 +151,8 @@ GitHub Actions画面から手動実行（Run workflow）も可能です。
 
 同じ日付のデータは上書き更新されるため、複数回実行しても行が重複することはありません。
 
+Fitbitのアクセストークンが期限切れになった場合、リフレッシュトークンで自動更新し、新しいトークンペアをGitHub Secretsに書き戻します。これにより次回以降の実行も正常に動作し続けます。
+
 ### 手動同期（ローカル）
 
 ```bash
@@ -136,7 +164,7 @@ python manual_sync_today.py
 
 ```bash
 # Notionの最も古いエントリから指定日まで自動で遡って取り込み
-python auto_backfill.py --target-start 2020-04-24
+python auto_backfill.py --target-start 2021-01-01
 
 # 期間を指定して取り込み
 python backfill_fitbit_data.py --start-date 2024-01-01 --end-date 2024-12-31
@@ -166,9 +194,17 @@ caffeinate -i
 | `oauth_helper.py`                        | Fitbit OAuthトークンのリフレッシュ             |
 | `.github/workflows/sync-health-data.yml` | GitHub Actionsワークフロー定義                 |
 
+## Fitbit OAuthトークンの仕組み
+
+Fitbitのアクセストークンは8時間で期限切れになります。期限切れ時にはリフレッシュトークンを使って新しいアクセストークンを取得しますが、Fitbit APIではリフレッシュトークンが使い捨て（one-time use）であり、リフレッシュのたびに新しいリフレッシュトークンも発行されます。古いリフレッシュトークンはその時点で無効化されます。
+
+このため、GitHub Actions上でリフレッシュが発生した際には `gh secret set` コマンドを使って新しいトークンペアをGitHub Secretsに自動書き戻しています。この機能にはPAT_TOKENが必要です。
+
+ローカル実行時は `.env` ファイルに新しいトークンが自動的に書き込まれます。
+
 ## Fitbit APIのレート制限
 
-Fitbit APIには1時間あたり150リクエストの上限があります。1回の同期で14リクエスト（当日+前日分）を消費するため、10分間隔での自動実行は上限内に収まります。
+Fitbit APIには1時間あたり150リクエストの上限があります。1回の同期で14リクエスト（当日+前日の各7エンドポイント）を消費するため、10分間隔での自動実行は上限内に収まります。
 
 過去データのバックフィル時は、スクリプト内で自動的にAPIコール間に遅延を挿入し、レート制限に引っかかった場合は自動リトライを行います。
 
@@ -176,13 +212,13 @@ Fitbit APIには1時間あたり150リクエストの上限があります。1�
 
 **データが同期されない場合:** Pixel WatchからFitbitアプリへの同期が完了しているか確認してください。Fitbitアプリに最新データが反映されていればAPI側は問題ありません。
 
-**トークンエラーが出る場合:** Fitbitのアクセストークンには有効期限があります。通常はリフレッシュトークンで自動更新されますが、長期間使用しなかった場合はOAuth認証を再実行し、`.env` とGitHub Secretsを更新してください。
+**トークンエラーが出る場合:** 通常はリフレッシュトークンで自動更新されますが、長期間使用しなかった場合やリフレッシュトークンが何らかの理由で無効化された場合は、STEP 3のOAuth認証を再実行し、`.env` とGitHub Secretsの FITBIT_ACCESS_TOKEN および FITBIT_REFRESH_TOKEN を更新してください。
 
 **Notionにデータが入らない場合:** データベースIDが正しいか、インテグレーションがデータベースに接続されているか確認してください。
 
 **栄養データが取得できない場合:** OAuthの認可時に `nutrition` スコープが含まれている必要があります。含まれていない場合はトークンを再取得してください。
 
-**GitHub Actionsが失敗する場合:** リポジトリの Settings > Secrets and variables > Actions に6つのSecretがすべて登録されているか確認してください。
+**GitHub Actionsが失敗する場合:** リポジトリの Settings > Secrets and variables > Actions に7つのSecret（PAT_TOKEN含む）がすべて登録されているか確認してください。
 
 ## ライセンス
 
