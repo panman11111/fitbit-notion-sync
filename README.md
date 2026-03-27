@@ -150,6 +150,14 @@ python manual_sync_today.py
 
 ### 過去データの一括取り込み
 
+#### GitHub Actions で実行（推奨）
+
+ローカル環境不要で、GitHubサーバー上で実行されます。リポジトリの Actions タブから「Manual Backfill Fitbit Data」を選んで「Run workflow」を実行し、開始日・終了日を入力します。
+
+大量期間（数ヶ月〜数年分）を取り込む場合は、3ヶ月ごとに分けて実行してください。ワークフローには `concurrency` 設定があるため、複数回トリガーしても1つずつ順番に実行されます。
+
+#### ローカルで実行
+
 ```bash
 # Notionの最も古いエントリから指定日まで自動で遡って取り込み
 python auto_backfill.py --target-start 2021-01-01
@@ -163,7 +171,7 @@ python backfill_fitbit_data.py --last-week
 
 `auto_backfill.py` はNotionデータベースの最も古い日付を自動検出し、そこから指定した開始日まで遡ります。途中で中断しても、再実行すれば続きから自動で再開します。
 
-大量の過去データを取り込む場合は、Macのスリープを防止してから実行してください。
+大量の過去データをローカルで取り込む場合は、Macのスリープを防止してから実行してください。
 
 ```bash
 # 別ターミナルで実行（完了後 Ctrl+C で停止）
@@ -202,7 +210,14 @@ Fitbit APIには1時間あたり150リクエストの上限があります。1�
 
 **データが同期されない場合:** Pixel WatchからFitbitアプリへの同期が完了しているか確認してください。Fitbitアプリに最新データが反映されていればAPI側は問題ありません。
 
-**トークンエラーが出る場合:** 通常はリフレッシュトークンで自動更新されますが、長期間使用しなかった場合やリフレッシュトークンが無効化された場合は、`python setup_fitbit_oauth.py` を再実行してください。表示されたトークンをGitHub Secretsの `FITBIT_ACCESS_TOKEN` と `FITBIT_REFRESH_TOKEN` に更新すれば復旧します。
+**トークンエラーが出る場合:** 通常はリフレッシュトークンで自動更新されますが、長期間使用しなかった場合やリフレッシュトークンが無効化された場合は再認証が必要です。
+
+1. `python setup_fitbit_oauth.py` を実行
+2. ブラウザでFitbitにログインして認可
+3. リダイレクト後のURL（`http://localhost:8080/?code=...`）をターミナルに貼り付け
+4. 表示された `FITBIT_ACCESS_TOKEN` と `FITBIT_REFRESH_TOKEN` をGitHub Secretsに更新
+
+`.env` がない環境や自動化したい場合は、以下の認証URLをブラウザで開いてコールバックURLを取得し、`setup_fitbit_oauth.py` に渡すだけでも対応できます。
 
 **Notionにデータが入らない場合:** データベースIDが正しいか、インテグレーションがデータベースに接続されているか確認してください。
 
