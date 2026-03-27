@@ -17,9 +17,14 @@ on:
         type: boolean
         default: true
 
+concurrency:
+  group: backfill
+  cancel-in-progress: false
+
 jobs:
   backfill:
     runs-on: ubuntu-latest
+    timeout-minutes: 360
     
     steps:
     - name: Checkout repository
