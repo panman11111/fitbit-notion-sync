@@ -61,8 +61,10 @@ def refresh_fitbit_token():
     client_secret = os.getenv('FITBIT_CLIENT_SECRET')
     refresh_token = os.getenv('FITBIT_REFRESH_TOKEN')
 
+    import base64
+    credentials = base64.b64encode(f'{client_id}:{client_secret}'.encode()).decode()
     headers = {
-        'Authorization': f'Basic {requests.auth._basic_auth_str(client_id, client_secret)}',
+        'Authorization': f'Basic {credentials}',
         'Content-Type': 'application/x-www-form-urlencoded'
     }
 

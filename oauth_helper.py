@@ -25,9 +25,11 @@ def refresh_fitbit_tokens():
     
     # Refresh token request
     token_url = "https://api.fitbit.com/oauth2/token"
+    import base64
+    credentials = base64.b64encode(f'{client_id}:{client_secret}'.encode()).decode()
     headers = {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': f'Basic {requests.auth._basic_auth_str(client_id, client_secret)}'
+        'Authorization': f'Basic {credentials}'
     }
     
     data = {
