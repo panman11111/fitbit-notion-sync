@@ -1,4 +1,3 @@
-よくまとまっています。今回の変更点を反映して更新します。
 # Fitbit to Notion Health Data Sync
 
 > このプロジェクトは [radusqrt/fitbit-notion-sync](https://github.com/radusqrt/fitbit-notion-sync) をベースに、日本語対応、栄養データ同期、GitHub Secrets自動更新などのカスタマイズを行ったものです。
@@ -66,24 +65,13 @@ https://www.notion.so/ワークスペース名/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx?
 
 ### 3. Fitbit OAuthトークンの取得
 
-以下のURLの `YOUR_CLIENT_ID` を自分のClient IDに置き換えてブラウザでアクセスします。
-
-```
-https://www.fitbit.com/oauth2/authorize?response_type=code&client_id=YOUR_CLIENT_ID&redirect_uri=http%3A%2F%2Flocalhost%3A8080&scope=activity+heartrate+sleep+weight+profile+nutrition&expires_in=31536000
-```
-
-認可後、ブラウザのURLバーに表示される `code=` と `#` の間の文字列をコピーし、以下のcurlコマンドを実行します。
+以下のコマンドを実行するとブラウザが開き、対話形式でトークンを取得できます。
 
 ```bash
-curl -X POST https://api.fitbit.com/oauth2/token \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -u "YOUR_CLIENT_ID:YOUR_CLIENT_SECRET" \
-  -d "grant_type=authorization_code" \
-  -d "code=COPIED_CODE" \
-  -d "redirect_uri=http://localhost:8080"
+python setup_fitbit_oauth.py
 ```
 
-レスポンスに含まれる `access_token` と `refresh_token` をメモしてください。
+ブラウザでFitbitにログインして認可後、リダイレクト先（`localhost:8080`）のURLをターミナルに貼り付けると、アクセストークンとリフレッシュトークンが `.env` に自動保存されます。
 
 ### 4. GitHub Personal Access Token (PAT) の発行
 
@@ -186,13 +174,15 @@ caffeinate -i
 
 | ファイル                                 | 説明                                           |
 | ---------------------------------------- | ---------------------------------------------- |
-| `sync_fitbit_notion.py`                  | メイン同期スクリプト（GitHub Actionsから実行） |
-| `manual_sync_today.py`                   | ローカルでの手動同期用                         |
-| `auto_backfill.py`                       | Notionの最古エントリから自動バックフィル       |
-| `backfill_fitbit_data.py`                | 期間指定での過去データ取り込み                 |
-| `update_notion_schema.py`                | Notionデータベースのプロパティ自動追加         |
-| `oauth_helper.py`                        | Fitbit OAuthトークンのリフレッシュ             |
-| `.github/workflows/sync-health-data.yml` | GitHub Actionsワークフロー定義                 |
+| `sync_fitbit_notion.py`                      | メイン同期スクリプト（GitHub Actionsから実行）       |
+| `manual_sync_today.py`                       | ローカルでの手動同期用                               |
+| `auto_backfill.py`                           | Notionの最古エントリから自動バックフィル             |
+| `backfill_fitbit_data.py`                    | 期間指定での過去データ取り込み                       |
+| `setup_fitbit_oauth.py`                      | Fitbit OAuth初回認証・トークン再取得                 |
+| `update_notion_schema.py`                    | Notionデータベースのプロパティ自動追加               |
+| `oauth_helper.py`                            | Fitbit OAuthトークンのリフレッシュ                   |
+| `.github/workflows/sync-health-data.yml`     | 10分間隔の自動同期ワークフロー                       |
+| `.github/workflows/manual-backfill.yml`      | 過去データ一括取り込みワークフロー（GitHub Actions） |
 
 ## Fitbit OAuthトークンの仕組み
 
@@ -212,7 +202,7 @@ Fitbit APIには1時間あたり150リクエストの上限があります。1�
 
 **データが同期されない場合:** Pixel WatchからFitbitアプリへの同期が完了しているか確認してください。Fitbitアプリに最新データが反映されていればAPI側は問題ありません。
 
-**トークンエラーが出る場合:** 通常はリフレッシュトークンで自動更新されますが、長期間使用しなかった場合やリフレッシュトークンが何らかの理由で無効化された場合は、STEP 3のOAuth認証を再実行し、`.env` とGitHub Secretsの FITBIT_ACCESS_TOKEN および FITBIT_REFRESH_TOKEN を更新してください。
+**トークンエラーが出る場合:** 通常はリフレッシュトークンで自動更新されますが、長期間使用しなかった場合やリフレッシュトークンが無効化された場合は、`python setup_fitbit_oauth.py` を再実行してください。表示されたトークンをGitHub Secretsの `FITBIT_ACCESS_TOKEN` と `FITBIT_REFRESH_TOKEN` に更新すれば復旧します。
 
 **Notionにデータが入らない場合:** データベースIDが正しいか、インテグレーションがデータベースに接続されているか確認してください。
 
