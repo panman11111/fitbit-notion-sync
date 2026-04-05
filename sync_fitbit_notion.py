@@ -5,7 +5,8 @@ Fetches yesterday's and today's health metrics and updates Notion
 """
 
 import os
-import subprocess
+import json
+import base64
 import requests
 from datetime import datetime, timedelta
 from notion_client import Client
@@ -34,33 +35,72 @@ def get_yesterday_date():
     return yesterday.strftime('%Y-%m-%d')
 
 
-def update_github_secret(secret_name, secret_value, max_retries=3):
-    """Update a GitHub Actions repository secret via gh CLI with retry"""
-    last_error = None
-    for attempt in range(1, max_retries + 1):
-        try:
-            result = subprocess.run(
-                ['gh', 'secret', 'set', secret_name, '--body', secret_value],
-                capture_output=True, text=True, timeout=30
-            )
-            if result.returncode == 0:
-                print(f"  GitHub Secret '{secret_name}' updated successfully")
-                return
-            last_error = result.stderr.strip()
-            print(f"  Attempt {attempt}/{max_retries} failed for '{secret_name}': {last_error}")
-        except FileNotFoundError:
-            raise RuntimeError("gh CLI not found. Cannot persist tokens to GitHub Secrets.")
-        except Exception as e:
-            last_error = str(e)
-            print(f"  Attempt {attempt}/{max_retries} error for '{secret_name}': {last_error}")
+TOKENS_FILE = 'fitbit_tokens.json'
 
-        if attempt < max_retries:
-            import time
-            time.sleep(2 ** attempt)
 
-    raise RuntimeError(
-        f"Failed to update GitHub Secret '{secret_name}' after {max_retries} attempts: {last_error}"
-    )
+def load_tokens_from_file():
+    """fitbit_tokens.jsonからトークンを読み込み環境変数に反映する"""
+    if not os.path.exists(TOKENS_FILE):
+        return
+    with open(TOKENS_FILE) as f:
+        tokens = json.load(f)
+    if tokens.get('access_token'):
+        os.environ['FITBIT_ACCESS_TOKEN'] = tokens['access_token']
+    if tokens.get('refresh_token'):
+        os.environ['FITBIT_REFRESH_TOKEN'] = tokens['refresh_token']
+
+
+def persist_tokens(access_token, refresh_token):
+    """新しいトークンをfitbit_tokens.jsonに保存し、GitHub ActionsではAPIでコミットする"""
+    tokens = {
+        'access_token': access_token,
+        'refresh_token': refresh_token,
+        'updated_at': datetime.now().isoformat(),
+    }
+
+    # ローカルファイルに書き込む
+    with open(TOKENS_FILE, 'w') as f:
+        json.dump(tokens, f, indent=2)
+        f.write('\n')
+
+    # GitHub Actions上ではContents APIでコミットして次回実行に引き継ぐ
+    if os.environ.get('GITHUB_ACTIONS') != 'true':
+        return
+
+    github_token = os.environ.get('GITHUB_TOKEN')
+    repo = os.environ.get('GITHUB_REPOSITORY')
+    if not github_token or not repo:
+        raise RuntimeError("GITHUB_TOKEN or GITHUB_REPOSITORY not set. Cannot persist tokens.")
+
+    content_b64 = base64.b64encode(
+        (json.dumps(tokens, indent=2) + '\n').encode()
+    ).decode()
+    api_url = f'https://api.github.com/repos/{repo}/contents/{TOKENS_FILE}'
+    headers = {
+        'Authorization': f'Bearer {github_token}',
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+    }
+
+    # 既存ファイルのSHAを取得（更新時に必要）
+    r = requests.get(api_url, headers=headers)
+    sha = r.json().get('sha') if r.status_code == 200 else None
+
+    payload = {
+        'message': 'chore: Fitbitトークン自動更新 [skip ci]',
+        'content': content_b64,
+        'committer': {
+            'name': 'github-actions[bot]',
+            'email': 'github-actions[bot]@users.noreply.github.com',
+        },
+    }
+    if sha:
+        payload['sha'] = sha
+
+    r = requests.put(api_url, json=payload, headers=headers)
+    if r.status_code not in (200, 201):
+        raise RuntimeError(f"Failed to commit {TOKENS_FILE}: {r.status_code} {r.text}")
+    print(f"  {TOKENS_FILE} committed successfully")
 
 
 def refresh_fitbit_token():
@@ -112,11 +152,9 @@ def refresh_fitbit_token():
         os.environ['FITBIT_ACCESS_TOKEN'] = new_access_token
         os.environ['FITBIT_REFRESH_TOKEN'] = new_refresh_token
 
-        # GitHub Actions: persist new tokens to Secrets for next run
-        if os.environ.get('GITHUB_ACTIONS') == 'true':
-            print("  Updating GitHub Secrets with new tokens...")
-            update_github_secret('FITBIT_ACCESS_TOKEN', new_access_token)
-            update_github_secret('FITBIT_REFRESH_TOKEN', new_refresh_token)
+        # 新しいトークンをファイルに保存（GitHub Actionsではコミットして次回に引き継ぐ）
+        print("  Persisting new tokens...")
+        persist_tokens(new_access_token, new_refresh_token)
 
         return new_access_token
     else:
@@ -415,6 +453,9 @@ def update_notion_database(date, fitbit_data, food_data=None):
 def main():
     """Main sync function"""
     print("Starting Fitbit to Notion sync...")
+
+    # fitbit_tokens.jsonが存在すればSecretより優先して読み込む（最新トークンを使用）
+    load_tokens_from_file()
 
     # Sync both today and yesterday
     today = datetime.now().strftime('%Y-%m-%d')
