@@ -25,6 +25,8 @@ jobs:
   backfill:
     runs-on: ubuntu-latest
     timeout-minutes: 360
+    permissions:
+      secrets: write
     
     steps:
     - name: Checkout repository
@@ -56,10 +58,14 @@ jobs:
     
     - name: Run backfill (last week)
       if: ${{ github.event.inputs.last_week == 'true' || (github.event.inputs.start_date == '' && github.event.inputs.end_date == '') }}
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: python backfill_fitbit_data.py --last-week
-    
+
     - name: Run backfill (custom date range)
       if: ${{ github.event.inputs.last_week == 'false' && (github.event.inputs.start_date != '' || github.event.inputs.end_date != '') }}
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         if [ -n "${{ github.event.inputs.start_date }}" ] && [ -n "${{ github.event.inputs.end_date }}" ]; then
           python backfill_fitbit_data.py --start-date "${{ github.event.inputs.start_date }}" --end-date "${{ github.event.inputs.end_date }}"

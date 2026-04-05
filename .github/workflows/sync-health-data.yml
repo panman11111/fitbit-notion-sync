@@ -8,6 +8,8 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    permissions:
+      secrets: write
 
     steps:
       - name: Checkout code
@@ -31,5 +33,5 @@ jobs:
           FITBIT_REFRESH_TOKEN: ${{ secrets.FITBIT_REFRESH_TOKEN }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
-          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python sync_fitbit_notion.py

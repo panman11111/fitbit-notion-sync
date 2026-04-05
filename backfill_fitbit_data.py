@@ -8,6 +8,7 @@ import os
 import sys
 import argparse
 import base64
+import subprocess
 import requests
 import time
 from datetime import datetime, timedelta
@@ -81,11 +82,45 @@ def refresh_fitbit_token():
         os.environ['FITBIT_ACCESS_TOKEN'] = new_access_token
         os.environ['FITBIT_REFRESH_TOKEN'] = new_refresh_token
 
+        # GitHub Actions: persist new tokens to Secrets for next run
+        if os.environ.get('GITHUB_ACTIONS') == 'true':
+            print("   Updating GitHub Secrets with new tokens...")
+            _update_github_secret('FITBIT_ACCESS_TOKEN', new_access_token)
+            _update_github_secret('FITBIT_REFRESH_TOKEN', new_refresh_token)
+
         print("   Access token refreshed automatically")
         return new_access_token
     else:
         print(f"   Failed to refresh token: {response.status_code}")
         return None
+
+
+def _update_github_secret(secret_name, secret_value, max_retries=3):
+    """Update a GitHub Actions repository secret via gh CLI with retry"""
+    last_error = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            result = subprocess.run(
+                ['gh', 'secret', 'set', secret_name, '--body', secret_value],
+                capture_output=True, text=True, timeout=30
+            )
+            if result.returncode == 0:
+                print(f"   GitHub Secret '{secret_name}' updated successfully")
+                return
+            last_error = result.stderr.strip()
+            print(f"   Attempt {attempt}/{max_retries} failed for '{secret_name}': {last_error}")
+        except FileNotFoundError:
+            raise RuntimeError("gh CLI not found. Cannot persist tokens to GitHub Secrets.")
+        except Exception as e:
+            last_error = str(e)
+            print(f"   Attempt {attempt}/{max_retries} error for '{secret_name}': {last_error}")
+
+        if attempt < max_retries:
+            time.sleep(2 ** attempt)
+
+    raise RuntimeError(
+        f"Failed to update GitHub Secret '{secret_name}' after {max_retries} attempts: {last_error}"
+    )
 
 
 def make_api_request(url, headers, description="API call"):

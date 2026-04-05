@@ -34,23 +34,33 @@ def get_yesterday_date():
     return yesterday.strftime('%Y-%m-%d')
 
 
-def update_github_secret(secret_name, secret_value):
-    """Update a GitHub Actions repository secret via gh CLI"""
-    try:
-        result = subprocess.run(
-            ['gh', 'secret', 'set', secret_name, '--body', secret_value],
-            capture_output=True, text=True, timeout=30
-        )
-        if result.returncode == 0:
-            print(f"  GitHub Secret '{secret_name}' updated successfully")
-        else:
-            print(
-                f"  Failed to update GitHub Secret '{secret_name}': {result.stderr}")
-    except FileNotFoundError:
-        print(
-            f"  gh CLI not found, skipping GitHub Secret update for '{secret_name}'")
-    except Exception as e:
-        print(f"  Error updating GitHub Secret '{secret_name}': {e}")
+def update_github_secret(secret_name, secret_value, max_retries=3):
+    """Update a GitHub Actions repository secret via gh CLI with retry"""
+    last_error = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            result = subprocess.run(
+                ['gh', 'secret', 'set', secret_name, '--body', secret_value],
+                capture_output=True, text=True, timeout=30
+            )
+            if result.returncode == 0:
+                print(f"  GitHub Secret '{secret_name}' updated successfully")
+                return
+            last_error = result.stderr.strip()
+            print(f"  Attempt {attempt}/{max_retries} failed for '{secret_name}': {last_error}")
+        except FileNotFoundError:
+            raise RuntimeError("gh CLI not found. Cannot persist tokens to GitHub Secrets.")
+        except Exception as e:
+            last_error = str(e)
+            print(f"  Attempt {attempt}/{max_retries} error for '{secret_name}': {last_error}")
+
+        if attempt < max_retries:
+            import time
+            time.sleep(2 ** attempt)
+
+    raise RuntimeError(
+        f"Failed to update GitHub Secret '{secret_name}' after {max_retries} attempts: {last_error}"
+    )
 
 
 def refresh_fitbit_token():
@@ -119,12 +129,9 @@ def make_api_request_with_refresh(url, headers):
 
     if response.status_code == 401:  # Token expired
         print("  Access token expired, refreshing...")
-        try:
-            new_token = refresh_fitbit_token()
-            headers['Authorization'] = f'Bearer {new_token}'
-            response = requests.get(url, headers=headers)
-        except Exception as e:
-            print(f"  Token refresh failed: {e}")
+        new_token = refresh_fitbit_token()  # RuntimeError は呼び出し元に伝播させる
+        headers['Authorization'] = f'Bearer {new_token}'
+        response = requests.get(url, headers=headers)
 
     return response
 
