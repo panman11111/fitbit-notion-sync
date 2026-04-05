@@ -16,6 +16,8 @@ on:
 jobs:
   sync-today:
     runs-on: ubuntu-latest
+    permissions:
+      secrets: write
     
     steps:
     - name: Checkout repository
@@ -152,6 +154,7 @@ jobs:
         GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         SYNC_DATE: ${{ steps.date.outputs.SYNC_DATE }}
         INCLUDE_FOOD_PHOTOS: ${{ github.event.inputs.include_food_photos }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         python manual_sync_today.py
     
