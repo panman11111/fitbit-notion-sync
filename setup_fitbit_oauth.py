@@ -106,13 +106,20 @@ def setup_fitbit_oauth():
             
             with open('.env', 'w') as f:
                 f.write(content)
-            
-            print()
-            print("🔑 UPDATE THESE GITHUB SECRETS:")
-            print("Go to: Settings → Secrets and variables → Actions")
-            print()
-            print(f"FITBIT_ACCESS_TOKEN={tokens['access_token']}")
-            print(f"FITBIT_REFRESH_TOKEN={tokens['refresh_token']}")
+
+            # fitbit_tokens.jsonも更新
+            import json
+            from datetime import datetime
+            token_data = {
+                'access_token': tokens['access_token'],
+                'refresh_token': tokens['refresh_token'],
+                'updated_at': datetime.now().isoformat(),
+            }
+            with open('fitbit_tokens.json', 'w') as f:
+                json.dump(token_data, f, indent=2)
+                f.write('\n')
+            print("✅ fitbit_tokens.json updated")
+
             print()
             print("✅ Fitbit OAuth setup complete!")
             
