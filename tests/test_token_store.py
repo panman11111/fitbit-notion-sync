@@ -179,36 +179,45 @@ class TestPersistTokens:
         assert "FITBIT_REFRESH_TOKEN=ref_new" in content
 
     def test_github_actions_calls_update_secret_twice(self, monkeypatch):
-        """正常系(GitHub Actions): update_github_secretが ACCESS/REFRESH で2回呼ばれる"""
+        """正常系(GitHub Actions): _put_encrypted_secret が ACCESS/REFRESH で2回呼ばれる"""
         from token_store import persist_tokens
 
         monkeypatch.setenv("GITHUB_ACTIONS", "true")
         monkeypatch.setenv("BOT_PAT", "ghp_botpat")
         monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
 
-        with patch("token_store.update_github_secret") as mock_update:
+        with patch("token_store._get_repo_public_key", return_value=("kid", "pubkey")), \
+             patch("token_store._encrypt_secret", return_value="encrypted"), \
+             patch("token_store._put_encrypted_secret") as mock_put:
             persist_tokens("acc_token", "ref_token")
 
-        assert mock_update.call_count == 2
-        calls = mock_update.call_args_list
-        call_names = [c[0][0] for c in calls]
+        assert mock_put.call_count == 2
+        call_names = [c[0][0] for c in mock_put.call_args_list]
         assert "FITBIT_ACCESS_TOKEN" in call_names
         assert "FITBIT_REFRESH_TOKEN" in call_names
 
     def test_github_actions_passes_correct_values(self, monkeypatch):
-        """正常系(GitHub Actions): 正しいトークン値が渡される"""
+        """正常系(GitHub Actions): 正しいトークン値が _encrypt_secret に渡される"""
         from token_store import persist_tokens
 
         monkeypatch.setenv("GITHUB_ACTIONS", "true")
         monkeypatch.setenv("BOT_PAT", "ghp_botpat")
         monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
 
-        with patch("token_store.update_github_secret") as mock_update:
+        encrypted_calls: list[tuple[str, str]] = []
+
+        def fake_encrypt(value: str, pubkey: str) -> str:
+            encrypted_calls.append((value, pubkey))
+            return f"enc_{value}"
+
+        with patch("token_store._get_repo_public_key", return_value=("kid", "pubkey")), \
+             patch("token_store._encrypt_secret", side_effect=fake_encrypt), \
+             patch("token_store._put_encrypted_secret"):
             persist_tokens("my_access", "my_refresh")
 
-        calls_by_name = {c[0][0]: c[0][1] for c in mock_update.call_args_list}
-        assert calls_by_name["FITBIT_ACCESS_TOKEN"] == "my_access"
-        assert calls_by_name["FITBIT_REFRESH_TOKEN"] == "my_refresh"
+        encrypted_values = [v for v, _ in encrypted_calls]
+        assert "my_access" in encrypted_values
+        assert "my_refresh" in encrypted_values
 
     def test_github_actions_without_bot_pat_raises_runtime_error(self, monkeypatch):
         """異常系: GITHUB_ACTIONS=true かつ BOT_PAT未設定でRuntimeError"""

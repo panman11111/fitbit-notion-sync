@@ -45,6 +45,57 @@ def _encrypt_secret(secret_value: str, public_key_b64: str) -> str:
     return base64.b64encode(encrypted).decode("utf-8")
 
 
+def _make_github_headers(pat: str) -> dict:
+    """GitHub API 共通ヘッダを生成する"""
+    return {
+        "Authorization": f"Bearer {pat}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+
+def _get_repo_public_key(repo: str, headers: dict) -> tuple[str, str]:
+    """
+    リポジトリの公開鍵を取得する。
+
+    Returns:
+        (key_id, public_key_b64) のタプル
+
+    Raises:
+        RuntimeError: 公開鍵取得に失敗した場合
+    """
+    key_resp = requests.get(
+        f"https://api.github.com/repos/{repo}/actions/secrets/public-key",
+        headers=headers,
+    )
+    if key_resp.status_code != 200:
+        raise RuntimeError(
+            f"Failed to get GitHub Actions public key: {key_resp.status_code} {key_resp.text}"
+        )
+    key_data = key_resp.json()
+    return key_data["key_id"], key_data["key"]
+
+
+def _put_encrypted_secret(
+    name: str, encrypted_value: str, key_id: str, repo: str, headers: dict
+) -> None:
+    """
+    暗号化済みシークレットを GitHub API で PUT する。
+
+    Raises:
+        RuntimeError: シークレット更新に失敗した場合
+    """
+    put_resp = requests.put(
+        f"https://api.github.com/repos/{repo}/actions/secrets/{name}",
+        headers=headers,
+        json={"encrypted_value": encrypted_value, "key_id": key_id},
+    )
+    if put_resp.status_code not in (201, 204):
+        raise RuntimeError(
+            f"Failed to update GitHub secret '{name}': {put_resp.status_code} {put_resp.text}"
+        )
+
+
 # ------------------------------------------------------------------ #
 # 公開API
 # ------------------------------------------------------------------ #
@@ -63,35 +114,10 @@ def update_github_secret(name: str, value: str, repo: str, pat: str) -> None:
     Raises:
         RuntimeError: 公開鍵取得またはシークレット更新に失敗した場合
     """
-    headers = {
-        "Authorization": f"Bearer {pat}",
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
-    base_url = f"https://api.github.com/repos/{repo}/actions/secrets"
-
-    # リポジトリの公開鍵を取得
-    key_resp = requests.get(f"{base_url}/public-key", headers=headers)
-    if key_resp.status_code != 200:
-        raise RuntimeError(
-            f"Failed to get GitHub Actions public key: {key_resp.status_code} {key_resp.text}"
-        )
-
-    key_data = key_resp.json()
-    key_id: str = key_data["key_id"]
-    public_key_b64: str = key_data["key"]
-
+    headers = _make_github_headers(pat)
+    key_id, public_key_b64 = _get_repo_public_key(repo, headers)
     encrypted_value = _encrypt_secret(value, public_key_b64)
-
-    put_resp = requests.put(
-        f"{base_url}/{name}",
-        headers=headers,
-        json={"encrypted_value": encrypted_value, "key_id": key_id},
-    )
-    if put_resp.status_code not in (201, 204):
-        raise RuntimeError(
-            f"Failed to update GitHub secret '{name}': {put_resp.status_code} {put_resp.text}"
-        )
+    _put_encrypted_secret(name, encrypted_value, key_id, repo, headers)
 
 
 def persist_tokens(access_token: str, refresh_token: str) -> None:
@@ -166,8 +192,15 @@ def _persist_tokens_to_secrets(access_token: str, refresh_token: str) -> None:
             "GitHub Actions では自動設定されるはずです。"
         )
 
-    update_github_secret("FITBIT_ACCESS_TOKEN", access_token, repo, pat)
-    update_github_secret("FITBIT_REFRESH_TOKEN", refresh_token, repo, pat)
+    # 公開鍵は1回だけ取得してACCESS/REFRESH両方に使う（API呼び出しを削減）
+    headers = _make_github_headers(pat)
+    key_id, public_key_b64 = _get_repo_public_key(repo, headers)
+    _put_encrypted_secret(
+        "FITBIT_ACCESS_TOKEN", _encrypt_secret(access_token, public_key_b64), key_id, repo, headers
+    )
+    _put_encrypted_secret(
+        "FITBIT_REFRESH_TOKEN", _encrypt_secret(refresh_token, public_key_b64), key_id, repo, headers
+    )
 
 
 def _persist_tokens_to_dotenv(access_token: str, refresh_token: str) -> None:
@@ -205,7 +238,7 @@ def _upsert_env_var(content: str, key: str, value: str) -> str:
     """
     pattern = re.compile(rf"^({re.escape(key)}=).*$", re.MULTILINE)
     if pattern.search(content):
-        return pattern.sub(rf"\g<1>{value}", content)
+        return pattern.sub(lambda m: m.group(1) + value, content)
 
     # 末尾改行を正規化してから追記
     if content and not content.endswith("\n"):
