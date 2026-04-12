@@ -67,13 +67,17 @@ def _get_repo_public_key(repo: str, headers: dict) -> tuple[str, str]:
     Raises:
         RuntimeError: 公開鍵取得に失敗した場合
     """
-    key_resp = requests.get(
-        f"https://api.github.com/repos/{repo}/actions/secrets/public-key",
-        headers=headers,
-    )
+    try:
+        key_resp = requests.get(
+            f"https://api.github.com/repos/{repo}/actions/secrets/public-key",
+            headers=headers,
+            timeout=30,
+        )
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f"GitHub公開鍵の取得中にネットワークエラーが発生しました") from e
     if key_resp.status_code != 200:
         raise RuntimeError(
-            f"Failed to get GitHub Actions public key: {key_resp.status_code} {key_resp.text}"
+            f"Failed to get GitHub Actions public key: {key_resp.status_code}"
         )
     key_data = key_resp.json()
     return key_data["key_id"], key_data["key"]
@@ -88,14 +92,18 @@ def _put_encrypted_secret(
     Raises:
         RuntimeError: シークレット更新に失敗した場合
     """
-    put_resp = requests.put(
-        f"https://api.github.com/repos/{repo}/actions/secrets/{name}",
-        headers=headers,
-        json={"encrypted_value": encrypted_value, "key_id": key_id},
-    )
+    try:
+        put_resp = requests.put(
+            f"https://api.github.com/repos/{repo}/actions/secrets/{name}",
+            headers=headers,
+            json={"encrypted_value": encrypted_value, "key_id": key_id},
+            timeout=30,
+        )
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f"GitHubシークレット '{name}' の更新中にネットワークエラーが発生しました") from e
     if put_resp.status_code not in (201, 204):
         raise RuntimeError(
-            f"Failed to update GitHub secret '{name}': {put_resp.status_code} {put_resp.text}"
+            f"Failed to update GitHub secret '{name}': {put_resp.status_code}"
         )
 
 

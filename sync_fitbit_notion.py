@@ -79,13 +79,17 @@ def refresh_fitbit_token():
 
 def make_api_request_with_refresh(url, headers):
     """Make API request with automatic token refresh if needed"""
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=headers, timeout=30)
 
     if response.status_code == 401:  # Token expired
         print("  Access token expired, refreshing...")
         new_token = refresh_fitbit_token()  # RuntimeError は呼び出し元に伝播させる
         headers['Authorization'] = f'Bearer {new_token}'
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, timeout=30)
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"APIリクエストがトークンリフレッシュ後も失敗しました: {response.status_code} {url}"
+            )
 
     return response
 
