@@ -61,6 +61,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         GITHUB_REPOSITORY: ${{ github.repository }}
+        BOT_PAT: ${{ secrets.BOT_PAT }}
       run: python backfill_fitbit_data.py --last-week
 
     - name: Run backfill (custom date range)
@@ -68,6 +69,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         GITHUB_REPOSITORY: ${{ github.repository }}
+        BOT_PAT: ${{ secrets.BOT_PAT }}
       run: |
         if [ -n "${{ github.event.inputs.start_date }}" ] && [ -n "${{ github.event.inputs.end_date }}" ]; then
           python backfill_fitbit_data.py --start-date "${{ github.event.inputs.start_date }}" --end-date "${{ github.event.inputs.end_date }}"
