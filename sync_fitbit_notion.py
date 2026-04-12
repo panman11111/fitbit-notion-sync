@@ -9,7 +9,6 @@ import base64
 import requests
 from datetime import datetime, timedelta
 from notion_client import Client
-from dotenv import load_dotenv
 from token_store import persist_tokens, load_tokens
 
 # --- Gemini API / Google Drive food photo tracking (disabled) ---
@@ -75,7 +74,7 @@ def refresh_fitbit_token():
 
         return new_access_token
     else:
-        raise Exception(f"Failed to refresh token: {response.text}")
+        raise RuntimeError(f"Fitbitトークンのリフレッシュに失敗しました: {response.status_code} {response.text}")
 
 
 def make_api_request_with_refresh(url, headers):
