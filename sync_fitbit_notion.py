@@ -43,7 +43,9 @@ def refresh_fitbit_token():
     client_secret = os.getenv('FITBIT_CLIENT_SECRET')
     refresh_token = os.getenv('FITBIT_REFRESH_TOKEN')
 
-    import base64
+    if not all([client_id, client_secret, refresh_token]):
+        raise RuntimeError("Fitbit認証情報（CLIENT_ID/CLIENT_SECRET/REFRESH_TOKEN）が設定されていません")
+
     credentials = base64.b64encode(f'{client_id}:{client_secret}'.encode()).decode()
     headers = {
         'Authorization': f'Basic {credentials}',
@@ -92,6 +94,8 @@ def make_api_request_with_refresh(url, headers):
 def get_fitbit_data(date):
     """Fetch comprehensive Fitbit data for a specific date"""
     access_token = os.getenv('FITBIT_ACCESS_TOKEN')
+    if not access_token:
+        raise RuntimeError("FITBIT_ACCESS_TOKEN が設定されていません")
 
     headers = {'Authorization': f'Bearer {access_token}'}
     base_url = 'https://api.fitbit.com/1/user/-'
@@ -259,8 +263,11 @@ def get_fitbit_data(date):
 
 def update_notion_database(date, fitbit_data, food_data=None):
     """Update or create entry in Notion database"""
-    notion = Client(auth=os.getenv('NOTION_TOKEN'))
+    notion_token = os.getenv('NOTION_TOKEN')
     database_id = os.getenv('NOTION_DATABASE_ID')
+    if not notion_token or not database_id:
+        raise RuntimeError("NOTION_TOKEN / NOTION_DATABASE_ID が設定されていません")
+    notion = Client(auth=notion_token)
 
     # Check if entry already exists for this date
     existing_pages = notion.databases.query(
