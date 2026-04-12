@@ -367,6 +367,7 @@ def update_notion_database(date, fitbit_data, food_data=None):
 
     except Exception as e:
         print(f"  Error updating Notion: {e}")
+        raise
 
 
 def main():
