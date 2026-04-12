@@ -111,8 +111,9 @@ def make_api_request(url, headers, description="API call"):
 
 def get_fitbit_data(date):
     """Fetch comprehensive Fitbit data for a specific date with rate limiting"""
-    load_dotenv()
     access_token = os.getenv('FITBIT_ACCESS_TOKEN')
+    if not access_token:
+        raise RuntimeError("FITBIT_ACCESS_TOKEN が設定されていません")
 
     headers = {'Authorization': f'Bearer {access_token}'}
     base_url = 'https://api.fitbit.com/1/user/-'
@@ -294,10 +295,11 @@ def get_fitbit_data(date):
 
 def update_notion_database(date, fitbit_data):
     """Update or create entry in Notion database"""
-    load_dotenv()
-
-    notion = Client(auth=os.getenv('NOTION_TOKEN'))
+    notion_token = os.getenv('NOTION_TOKEN')
     database_id = os.getenv('NOTION_DATABASE_ID')
+    if not notion_token or not database_id:
+        raise RuntimeError("NOTION_TOKEN / NOTION_DATABASE_ID が設定されていません")
+    notion = Client(auth=notion_token)
 
     # Check if entry already exists for this date
     existing_pages = notion.databases.query(
