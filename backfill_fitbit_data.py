@@ -5,14 +5,12 @@ Can be run manually with custom date ranges or defaults to last week
 """
 
 import os
-import sys
 import argparse
 import base64
 import requests
 import time
 from datetime import datetime, timedelta
 from notion_client import Client
-from dotenv import load_dotenv
 from token_store import persist_tokens, load_tokens
 
 
@@ -85,12 +83,15 @@ def make_api_request(url, headers, description="API call"):
             return response
         elif response.status_code == 401:
             print(f"   Token expired for {description}, refreshing...")
-            new_token = refresh_fitbit_token()
-            if new_token:
-                headers['Authorization'] = f'Bearer {new_token}'
-                response = requests.get(url, headers=headers)
-                if response.status_code == 200:
-                    return response
+            try:
+                new_token = refresh_fitbit_token()
+            except RuntimeError as e:
+                print(f"   Token refresh failed: {e}")
+                break
+            headers['Authorization'] = f'Bearer {new_token}'
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                return response
             print(f"   {description} failed even after token refresh")
             break
         elif response.status_code == 429:
