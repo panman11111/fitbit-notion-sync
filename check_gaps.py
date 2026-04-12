@@ -15,16 +15,15 @@ from notion_client import Client
 from token_store import load_tokens
 
 
-def get_fitbit_member_since():
+def get_fitbit_member_since(access_token: str) -> date:
     """FitbitプロフィールからmemberSince（登録日）を取得"""
-    access_token = os.getenv('FITBIT_ACCESS_TOKEN')
     headers = {'Authorization': f'Bearer {access_token}'}
 
     response = requests.get(
         'https://api.fitbit.com/1/user/-/profile.json', headers=headers
     )
     if response.status_code != 200:
-        raise Exception(f"Fitbit profile API failed: {response.text}")
+        raise RuntimeError(f"Fitbit profile API failed: {response.text}")
 
     member_since = response.json()['user']['memberSince']
     return datetime.strptime(member_since, '%Y-%m-%d').date()
@@ -72,7 +71,7 @@ def main():
 
     # 1. Fitbit最古日取得
     print("Fitbit memberSince を取得中...")
-    member_since = get_fitbit_member_since()
+    member_since = get_fitbit_member_since(access_token)
     today = date.today()
     print(f"  memberSince : {member_since}")
     print(f"  本日        : {today}")

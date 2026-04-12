@@ -39,8 +39,6 @@ def get_yesterday_date():
 
 def refresh_fitbit_token():
     """Refresh the Fitbit access token if needed"""
-    load_dotenv()
-
     client_id = os.getenv('FITBIT_CLIENT_ID')
     client_secret = os.getenv('FITBIT_CLIENT_SECRET')
     refresh_token = os.getenv('FITBIT_REFRESH_TOKEN')
@@ -93,7 +91,6 @@ def make_api_request_with_refresh(url, headers):
 
 def get_fitbit_data(date):
     """Fetch comprehensive Fitbit data for a specific date"""
-    load_dotenv()
     access_token = os.getenv('FITBIT_ACCESS_TOKEN')
 
     headers = {'Authorization': f'Bearer {access_token}'}
@@ -262,8 +259,6 @@ def get_fitbit_data(date):
 
 def update_notion_database(date, fitbit_data, food_data=None):
     """Update or create entry in Notion database"""
-    load_dotenv()
-
     notion = Client(auth=os.getenv('NOTION_TOKEN'))
     database_id = os.getenv('NOTION_DATABASE_ID')
 

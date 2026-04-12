@@ -75,30 +75,30 @@ def setup_fitbit_oauth():
     try:
         print("Exchanging code for tokens...")
         response = requests.post(token_url, headers=headers, data=data)
-
-        if response.status_code == 200:
-            tokens = response.json()
-
-            print("Successfully obtained Fitbit tokens!")
-            print(f"   Access token: {tokens['access_token'][:20]}...")
-            print(f"   Refresh token: {tokens['refresh_token'][:20]}...")
-            print(f"   Expires in: {tokens['expires_in']} seconds")
-
-            persist_tokens(tokens["access_token"], tokens["refresh_token"])
-
-            print()
-            print("Fitbit OAuth setup complete!")
-
-            return True
-
-        else:
-            print(f"Failed to get tokens: {response.status_code}")
-            print(f"   Response: {response.text}")
-            return False
-
     except Exception as e:
         print(f"Error getting tokens: {e}")
         return False
+
+    if response.status_code != 200:
+        print(f"Failed to get tokens: {response.status_code}")
+        print(f"   Response: {response.text}")
+        return False
+
+    tokens = response.json()
+    print("Successfully obtained Fitbit tokens!")
+    print(f"   Access token: {tokens['access_token'][:20]}...")
+    print(f"   Refresh token: {tokens['refresh_token'][:20]}...")
+    print(f"   Expires in: {tokens['expires_in']} seconds")
+
+    try:
+        persist_tokens(tokens["access_token"], tokens["refresh_token"])
+    except RuntimeError as e:
+        print(f"トークン保存に失敗しました: {e}")
+        return False
+
+    print()
+    print("Fitbit OAuth setup complete!")
+    return True
 
 if __name__ == "__main__":
     print("Fitbit OAuth Setup")

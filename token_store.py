@@ -14,10 +14,13 @@ from __future__ import annotations
 
 import base64
 import os
+import pathlib
 import re
 
 import requests
 from dotenv import load_dotenv
+
+_DEFAULT_ENV_PATH = pathlib.Path(__file__).parent / ".env"
 
 
 # ------------------------------------------------------------------ #
@@ -205,12 +208,10 @@ def _persist_tokens_to_secrets(access_token: str, refresh_token: str) -> None:
 
 def _persist_tokens_to_dotenv(access_token: str, refresh_token: str) -> None:
     """ローカル実行時に .env ファイルへトークンを書き込む"""
-    env_path = ".env"
+    env_path = _DEFAULT_ENV_PATH
 
-    if os.path.exists(env_path):
-        with open(env_path, "r", encoding="utf-8") as f:
-            content = f.read()
-
+    if env_path.exists():
+        content = env_path.read_text(encoding="utf-8")
         content = _upsert_env_var(content, "FITBIT_ACCESS_TOKEN", access_token)
         content = _upsert_env_var(content, "FITBIT_REFRESH_TOKEN", refresh_token)
     else:
@@ -219,8 +220,7 @@ def _persist_tokens_to_dotenv(access_token: str, refresh_token: str) -> None:
             f"FITBIT_REFRESH_TOKEN={refresh_token}\n"
         )
 
-    with open(env_path, "w", encoding="utf-8") as f:
-        f.write(content)
+    env_path.write_text(content, encoding="utf-8")
 
 
 def _upsert_env_var(content: str, key: str, value: str) -> str:
