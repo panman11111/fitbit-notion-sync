@@ -33,8 +33,6 @@ def get_date_range(start_date=None, end_date=None, last_week=False):
 
 def refresh_fitbit_token():
     """Refresh Fitbit access token and return new token"""
-    load_dotenv()
-
     client_id = os.getenv('FITBIT_CLIENT_ID')
     client_secret = os.getenv('FITBIT_CLIENT_SECRET')
     refresh_token = os.getenv('FITBIT_REFRESH_TOKEN')
