@@ -66,8 +66,11 @@ def main():
     os.environ['FITBIT_ACCESS_TOKEN'] = access_token
     os.environ['FITBIT_REFRESH_TOKEN'] = refresh_token
 
-    notion = Client(auth=os.getenv('NOTION_TOKEN'))
+    notion_token = os.getenv('NOTION_TOKEN')
     database_id = os.getenv('NOTION_DATABASE_ID')
+    if not notion_token or not database_id:
+        raise RuntimeError("NOTION_TOKEN / NOTION_DATABASE_ID が設定されていません")
+    notion = Client(auth=notion_token)
 
     # 1. Fitbit最古日取得
     print("Fitbit memberSince を取得中...")
