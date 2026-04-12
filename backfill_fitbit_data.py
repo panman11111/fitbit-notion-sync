@@ -40,7 +40,7 @@ def refresh_fitbit_token():
     refresh_token = os.getenv('FITBIT_REFRESH_TOKEN')
 
     if not all([client_id, client_secret, refresh_token]):
-        return None
+        raise RuntimeError("Fitbit認証情報（CLIENT_ID/CLIENT_SECRET/REFRESH_TOKEN）が設定されていません")
 
     token_url = "https://api.fitbit.com/oauth2/token"
     token_data = {
@@ -72,8 +72,7 @@ def refresh_fitbit_token():
         print("   Access token refreshed automatically")
         return new_access_token
     else:
-        print(f"   Failed to refresh token: {response.status_code}")
-        return None
+        raise RuntimeError(f"Fitbitトークンのリフレッシュに失敗しました: {response.status_code} {response.text}")
 
 
 def make_api_request(url, headers, description="API call"):
