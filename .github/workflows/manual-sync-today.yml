@@ -156,6 +156,7 @@ jobs:
         INCLUDE_FOOD_PHOTOS: ${{ github.event.inputs.include_food_photos }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         GITHUB_REPOSITORY: ${{ github.repository }}
+        BOT_PAT: ${{ secrets.BOT_PAT }}
       run: |
         python manual_sync_today.py
     
