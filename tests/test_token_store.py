@@ -143,6 +143,8 @@ class TestPersistTokens:
 
     def test_local_env_updates_dotenv_file(self, tmp_path, monkeypatch):
         """正常系(ローカル): .envファイルのトークンが更新される"""
+        import pathlib
+        import token_store
         from token_store import persist_tokens
 
         env_file = tmp_path / ".env"
@@ -153,7 +155,7 @@ class TestPersistTokens:
         )
 
         monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
-        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(token_store, "_DEFAULT_ENV_PATH", env_file)
 
         persist_tokens("new_access", "new_refresh")
 
@@ -165,14 +167,15 @@ class TestPersistTokens:
 
     def test_local_creates_dotenv_if_not_exists(self, tmp_path, monkeypatch):
         """.envが存在しない場合は新規作成される"""
+        import token_store
         from token_store import persist_tokens
 
+        env_file = tmp_path / ".env"
         monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
-        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(token_store, "_DEFAULT_ENV_PATH", env_file)
 
         persist_tokens("acc_new", "ref_new")
 
-        env_file = tmp_path / ".env"
         assert env_file.exists()
         content = env_file.read_text()
         assert "FITBIT_ACCESS_TOKEN=acc_new" in content
@@ -242,6 +245,7 @@ class TestPersistTokens:
 
     def test_local_preserves_other_env_vars(self, tmp_path, monkeypatch):
         """ローカル: 他の環境変数が保持される"""
+        import token_store
         from token_store import persist_tokens
 
         env_file = tmp_path / ".env"
@@ -252,7 +256,7 @@ class TestPersistTokens:
         )
 
         monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
-        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(token_store, "_DEFAULT_ENV_PATH", env_file)
 
         persist_tokens("new_access", "new_refresh")
 
@@ -404,6 +408,7 @@ class TestUpsertEnvVar:
 
     def test_appends_to_content_without_trailing_newline(self, tmp_path, monkeypatch):
         """.envの末尾に改行がない場合でも正しく追記される"""
+        import token_store
         from token_store import persist_tokens
 
         env_file = tmp_path / ".env"
@@ -411,7 +416,7 @@ class TestUpsertEnvVar:
         env_file.write_text("NOTION_TOKEN=ntn")  # 改行なし
 
         monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
-        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(token_store, "_DEFAULT_ENV_PATH", env_file)
 
         persist_tokens("new_acc", "new_ref")
 
