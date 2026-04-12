@@ -74,8 +74,8 @@ def setup_fitbit_oauth():
 
     try:
         print("Exchanging code for tokens...")
-        response = requests.post(token_url, headers=headers, data=data)
-    except Exception as e:
+        response = requests.post(token_url, headers=headers, data=data, timeout=30)
+    except requests.exceptions.RequestException as e:
         print(f"Error getting tokens: {e}")
         return False
 
