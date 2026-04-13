@@ -4,8 +4,11 @@ Process Google OAuth authorization code to get tokens
 """
 
 import os
+import pathlib
 import requests
 from dotenv import load_dotenv
+
+_ENV_PATH = pathlib.Path(__file__).parent / ".env"
 
 def process_auth_code():
     """Process the authorization code to get Google tokens"""
@@ -15,8 +18,11 @@ def process_auth_code():
     client_secret = os.getenv('GOOGLE_CLIENT_SECRET')
     
     # Authorization code from the redirect URL
-    auth_code = "4/0AVMBsJj0ephjl67daO38ULDyARJoM3A73rVkJzyc_7avp7_HP13gXoFIxJJL-PXR8vF8vQ"
-    
+    auth_code = input("Paste the authorization code from the redirect URL: ").strip()
+    if not auth_code:
+        print("No authorization code provided")
+        return False
+
     print(f"🔄 Processing authorization code: {auth_code[:20]}...")
     
     # Exchange code for tokens
@@ -43,39 +49,27 @@ def process_auth_code():
             print(f"📋 Refresh token: {refresh_token[:20]}...")
             
             # Update .env file
-            with open('.env', 'r') as f:
-                content = f.read()
-            
-            # Update existing tokens
+            if _ENV_PATH.exists():
+                content = _ENV_PATH.read_text(encoding="utf-8")
+            else:
+                content = ""
+
             lines = content.split('\n')
-            updated = False
-            
             for i, line in enumerate(lines):
                 if line.startswith('GOOGLE_ACCESS_TOKEN='):
                     lines[i] = f'GOOGLE_ACCESS_TOKEN={access_token}'
-                    updated = True
                 elif line.startswith('GOOGLE_REFRESH_TOKEN='):
                     lines[i] = f'GOOGLE_REFRESH_TOKEN={refresh_token}'
-                    updated = True
-            
-            # Add refresh token if not found
+
             if 'GOOGLE_REFRESH_TOKEN=' not in content:
                 lines.append(f'GOOGLE_REFRESH_TOKEN={refresh_token}')
-            
-            content = '\n'.join(lines)
-            
-            with open('.env', 'w') as f:
-                f.write(content)
-            
+
+            _ENV_PATH.write_text('\n'.join(lines), encoding="utf-8")
+
             print()
             print("🔑 TOKENS UPDATED IN .env FILE")
-            print()
-            print("📋 UPDATE THESE GITHUB SECRETS:")
-            print(f"GOOGLE_ACCESS_TOKEN={access_token}")
-            print(f"GOOGLE_REFRESH_TOKEN={refresh_token}")
-            print()
-            print("Go to: https://github.com/radusqrt/fitbit-notion-sync/settings/secrets/actions")
-            print("Update the GOOGLE_ACCESS_TOKEN and GOOGLE_REFRESH_TOKEN secrets")
+            print("   .env ファイルを参照して GOOGLE_ACCESS_TOKEN / GOOGLE_REFRESH_TOKEN を")
+            print("   GitHub Secrets に登録してください。")
             
         else:
             print("⚠️ No refresh token received")

@@ -104,7 +104,12 @@ def main():
 
         print(f"   Steps: {fitbit_data.get('steps', 0)}, Sleep: {fitbit_data.get('sleep_hours', 0)}h, HRV: {fitbit_data.get('hrv_daily_rmssd', 'N/A')}")
 
-        result = update_notion_database(date, fitbit_data)
+        try:
+            result = update_notion_database(date, fitbit_data)
+        except RuntimeError as e:
+            print(f"❌ Error updating Notion for {date}: {e}")
+            errors += 1
+            continue
         if result == "created":
             print(f"✅ Created entry for {date}")
             created += 1
@@ -117,7 +122,7 @@ def main():
         if date != dates[-1]:
             time.sleep(5)
 
-    print(f"\n🎉 Backfill completed!")
+    print("\n🎉 Backfill completed!")
     print(f"📊 Results: {created} created, {updated} updated, {errors} errors")
 
     # Show remaining

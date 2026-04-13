@@ -47,7 +47,7 @@ def main():
         exp_date = datetime.fromtimestamp(exp_timestamp)
         now = datetime.now()
         
-        print(f"🔍 Fitbit token info:")
+        print("🔍 Fitbit token info:")
         print(f"  Expires: {exp_date}")
         print(f"  Current: {now}")
         print(f"  Status: {'⚠️ EXPIRED' if now > exp_date else '✅ Valid'}")

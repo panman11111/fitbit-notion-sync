@@ -5,12 +5,11 @@ Fetches yesterday's and today's health metrics and updates Notion
 """
 
 import os
-import json
 import base64
 import requests
 from datetime import datetime, timedelta
 from notion_client import Client
-from dotenv import load_dotenv
+from token_store import persist_tokens, load_tokens
 
 # --- Gemini API / Google Drive food photo tracking (disabled) ---
 # If you want to re-enable this feature, uncomment the following block
@@ -35,83 +34,17 @@ def get_yesterday_date():
     return yesterday.strftime('%Y-%m-%d')
 
 
-TOKENS_FILE = 'fitbit_tokens.json'
-
-
-def load_tokens_from_file():
-    """fitbit_tokens.jsonからトークンを読み込み環境変数に反映する"""
-    if not os.path.exists(TOKENS_FILE):
-        return
-    with open(TOKENS_FILE) as f:
-        tokens = json.load(f)
-    if tokens.get('access_token'):
-        os.environ['FITBIT_ACCESS_TOKEN'] = tokens['access_token']
-    if tokens.get('refresh_token'):
-        os.environ['FITBIT_REFRESH_TOKEN'] = tokens['refresh_token']
-
-
-def persist_tokens(access_token, refresh_token):
-    """新しいトークンをfitbit_tokens.jsonに保存し、GitHub ActionsではAPIでコミットする"""
-    tokens = {
-        'access_token': access_token,
-        'refresh_token': refresh_token,
-        'updated_at': datetime.now().isoformat(),
-    }
-
-    # ローカルファイルに書き込む
-    with open(TOKENS_FILE, 'w') as f:
-        json.dump(tokens, f, indent=2)
-        f.write('\n')
-
-    # GitHub Actions上ではContents APIでコミットして次回実行に引き継ぐ
-    if os.environ.get('GITHUB_ACTIONS') != 'true':
-        return
-
-    github_token = os.environ.get('GITHUB_TOKEN')
-    repo = os.environ.get('GITHUB_REPOSITORY')
-    if not github_token or not repo:
-        raise RuntimeError("GITHUB_TOKEN or GITHUB_REPOSITORY not set. Cannot persist tokens.")
-
-    content_b64 = base64.b64encode(
-        (json.dumps(tokens, indent=2) + '\n').encode()
-    ).decode()
-    api_url = f'https://api.github.com/repos/{repo}/contents/{TOKENS_FILE}'
-    headers = {
-        'Authorization': f'Bearer {github_token}',
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-    }
-
-    # 既存ファイルのSHAを取得（更新時に必要）
-    r = requests.get(api_url, headers=headers)
-    sha = r.json().get('sha') if r.status_code == 200 else None
-
-    payload = {
-        'message': 'chore: Fitbitトークン自動更新 [skip ci]',
-        'content': content_b64,
-        'committer': {
-            'name': 'github-actions[bot]',
-            'email': 'github-actions[bot]@users.noreply.github.com',
-        },
-    }
-    if sha:
-        payload['sha'] = sha
-
-    r = requests.put(api_url, json=payload, headers=headers)
-    if r.status_code not in (200, 201):
-        raise RuntimeError(f"Failed to commit {TOKENS_FILE}: {r.status_code} {r.text}")
-    print(f"  {TOKENS_FILE} committed successfully")
 
 
 def refresh_fitbit_token():
     """Refresh the Fitbit access token if needed"""
-    load_dotenv()
-
     client_id = os.getenv('FITBIT_CLIENT_ID')
     client_secret = os.getenv('FITBIT_CLIENT_SECRET')
     refresh_token = os.getenv('FITBIT_REFRESH_TOKEN')
 
-    import base64
+    if not all([client_id, client_secret, refresh_token]):
+        raise RuntimeError("Fitbit認証情報（CLIENT_ID/CLIENT_SECRET/REFRESH_TOKEN）が設定されていません")
+
     credentials = base64.b64encode(f'{client_id}:{client_secret}'.encode()).decode()
     headers = {
         'Authorization': f'Basic {credentials}',
@@ -124,60 +57,48 @@ def refresh_fitbit_token():
     }
 
     response = requests.post(
-        'https://api.fitbit.com/oauth2/token', data=data, headers=headers)
+        'https://api.fitbit.com/oauth2/token', data=data, headers=headers, timeout=30)
 
     if response.status_code == 200:
         tokens = response.json()
         new_access_token = tokens['access_token']
         new_refresh_token = tokens['refresh_token']
 
-        # Update .env file if it exists (local environment)
-        if os.path.exists('.env'):
-            with open('.env', 'r') as f:
-                content = f.read()
-
-            content = content.replace(
-                f'FITBIT_ACCESS_TOKEN={os.getenv("FITBIT_ACCESS_TOKEN")}',
-                f'FITBIT_ACCESS_TOKEN={new_access_token}'
-            )
-            content = content.replace(
-                f'FITBIT_REFRESH_TOKEN={refresh_token}',
-                f'FITBIT_REFRESH_TOKEN={new_refresh_token}'
-            )
-
-            with open('.env', 'w') as f:
-                f.write(content)
-
         # Update environment variables in memory
         os.environ['FITBIT_ACCESS_TOKEN'] = new_access_token
         os.environ['FITBIT_REFRESH_TOKEN'] = new_refresh_token
 
-        # 新しいトークンをファイルに保存（GitHub Actionsではコミットして次回に引き継ぐ）
+        # token_store を通じてトークンを永続化
         print("  Persisting new tokens...")
         persist_tokens(new_access_token, new_refresh_token)
 
         return new_access_token
     else:
-        raise Exception(f"Failed to refresh token: {response.text}")
+        raise RuntimeError(f"Fitbitトークンのリフレッシュに失敗しました: {response.status_code} {response.text}")
 
 
 def make_api_request_with_refresh(url, headers):
     """Make API request with automatic token refresh if needed"""
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=headers, timeout=30)
 
     if response.status_code == 401:  # Token expired
         print("  Access token expired, refreshing...")
         new_token = refresh_fitbit_token()  # RuntimeError は呼び出し元に伝播させる
         headers['Authorization'] = f'Bearer {new_token}'
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, timeout=30)
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"APIリクエストがトークンリフレッシュ後も失敗しました: {response.status_code} {url}"
+            )
 
     return response
 
 
 def get_fitbit_data(date):
     """Fetch comprehensive Fitbit data for a specific date"""
-    load_dotenv()
     access_token = os.getenv('FITBIT_ACCESS_TOKEN')
+    if not access_token:
+        raise RuntimeError("FITBIT_ACCESS_TOKEN が設定されていません")
 
     headers = {'Authorization': f'Bearer {access_token}'}
     base_url = 'https://api.fitbit.com/1/user/-'
@@ -345,10 +266,11 @@ def get_fitbit_data(date):
 
 def update_notion_database(date, fitbit_data, food_data=None):
     """Update or create entry in Notion database"""
-    load_dotenv()
-
-    notion = Client(auth=os.getenv('NOTION_TOKEN'))
+    notion_token = os.getenv('NOTION_TOKEN')
     database_id = os.getenv('NOTION_DATABASE_ID')
+    if not notion_token or not database_id:
+        raise RuntimeError("NOTION_TOKEN / NOTION_DATABASE_ID が設定されていません")
+    notion = Client(auth=notion_token)
 
     # Check if entry already exists for this date
     existing_pages = notion.databases.query(
@@ -448,14 +370,17 @@ def update_notion_database(date, fitbit_data, food_data=None):
 
     except Exception as e:
         print(f"  Error updating Notion: {e}")
+        raise
 
 
 def main():
     """Main sync function"""
     print("Starting Fitbit to Notion sync...")
 
-    # fitbit_tokens.jsonが存在すればSecretより優先して読み込む（最新トークンを使用）
-    load_tokens_from_file()
+    # 環境変数からトークンを読み込む（.envがあればload_dotenvも実行）
+    access_token, refresh_token = load_tokens()
+    os.environ['FITBIT_ACCESS_TOKEN'] = access_token
+    os.environ['FITBIT_REFRESH_TOKEN'] = refresh_token
 
     # Sync both today and yesterday
     today = datetime.now().strftime('%Y-%m-%d')

@@ -35,4 +35,5 @@ jobs:
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          BOT_PAT: ${{ secrets.BOT_PAT }}
         run: python sync_fitbit_notion.py

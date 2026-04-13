@@ -1,6 +1,9 @@
 # Environment variables
 .env
 
+# Fitbit tokens (セキュリティ上gitに含めない)
+fitbit_tokens.json
+
 # Personal data exports
 *.csv
 
@@ -28,6 +31,7 @@ wheels/
 
 # Virtual environment
 venv/
+.venv/
 env/
 ENV/
 
