@@ -8,10 +8,8 @@ TDD: テストファースト実装
   - load_tokens() -> tuple[str, str]
 """
 
-import os
-import json
 import pytest
-from unittest.mock import patch, MagicMock, mock_open, call
+from unittest.mock import patch, MagicMock
 
 
 # ------------------------------------------------------------------ #
@@ -36,7 +34,7 @@ class TestUpdateGithubSecret:
         mock_put = MagicMock()
         mock_put.status_code = 204
 
-        with patch("token_store.requests.get", return_value=mock_get) as patched_get, \
+        with patch("token_store.requests.get", return_value=mock_get), \
              patch("token_store.requests.put", return_value=mock_put) as patched_put, \
              patch("token_store._encrypt_secret", return_value="encrypted_value"):
             update_github_secret(
@@ -143,7 +141,6 @@ class TestPersistTokens:
 
     def test_local_env_updates_dotenv_file(self, tmp_path, monkeypatch):
         """正常系(ローカル): .envファイルのトークンが更新される"""
-        import pathlib
         import token_store
         from token_store import persist_tokens
 

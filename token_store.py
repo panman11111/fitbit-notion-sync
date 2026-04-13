@@ -74,7 +74,7 @@ def _get_repo_public_key(repo: str, headers: dict) -> tuple[str, str]:
             timeout=30,
         )
     except requests.exceptions.RequestException as e:
-        raise RuntimeError(f"GitHub公開鍵の取得中にネットワークエラーが発生しました") from e
+        raise RuntimeError(f"GitHub公開鍵の取得中にネットワークエラーが発生しました: {e}") from e
     if key_resp.status_code != 200:
         raise RuntimeError(
             f"Failed to get GitHub Actions public key: {key_resp.status_code}"
