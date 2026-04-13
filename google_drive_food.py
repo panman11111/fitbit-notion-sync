@@ -5,6 +5,7 @@ Retrieves food photos from Google Drive folder, extracts metadata, and classifie
 """
 
 import os
+import pathlib
 import tempfile
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -16,6 +17,8 @@ import google.generativeai as genai
 from PIL import Image
 from PIL.ExifTags import TAGS
 from dotenv import load_dotenv
+
+_ENV_PATH = pathlib.Path(__file__).parent / ".env"
 
 # Your Google Drive folder ID from the URL
 DRIVE_FOLDER_ID = "1FJhSf-gauhVnMwcHwOez1omDQ7jJtp5B"
@@ -30,7 +33,7 @@ def refresh_google_credentials():
     access_token = os.getenv('GOOGLE_ACCESS_TOKEN')
     
     if not all([client_id, client_secret]):
-        raise Exception("Missing Google OAuth credentials in .env file")
+        raise RuntimeError("Missing Google OAuth credentials in .env file")
     
     # Create credentials object
     credentials = Credentials(
@@ -47,19 +50,25 @@ def refresh_google_credentials():
         credentials.refresh(Request())
         
         # Update .env file with new token
-        with open('.env', 'r') as f:
-            content = f.read()
-        
+        if _ENV_PATH.exists():
+            content = _ENV_PATH.read_text(encoding="utf-8")
+        else:
+            content = ""
+
         if 'GOOGLE_ACCESS_TOKEN=' in content:
-            content = content.replace(
-                f'GOOGLE_ACCESS_TOKEN={access_token}',
-                f'GOOGLE_ACCESS_TOKEN={credentials.token}'
+            import re
+            content = re.sub(
+                r'^(GOOGLE_ACCESS_TOKEN=).*$',
+                lambda m: m.group(1) + credentials.token,
+                content,
+                flags=re.MULTILINE,
             )
         else:
-            content += f'\nGOOGLE_ACCESS_TOKEN={credentials.token}\n'
-        
-        with open('.env', 'w') as f:
-            f.write(content)
+            if content and not content.endswith("\n"):
+                content += "\n"
+            content += f'GOOGLE_ACCESS_TOKEN={credentials.token}\n'
+
+        _ENV_PATH.write_text(content, encoding="utf-8")
     
     return credentials
 
@@ -122,7 +131,7 @@ def get_photo_timestamp(file_info: Dict, credentials: Credentials) -> Optional[d
             original_time = datetime.fromisoformat(image_meta['time'].replace('Z', '+00:00'))
             print(f"  🕒 Original timestamp from Drive metadata: {original_time}")
             return original_time
-        except Exception:
+        except (ValueError, AttributeError):
             pass
 
     # Priority 2: Download and extract EXIF data (most reliable for original timestamp)
@@ -143,7 +152,7 @@ def get_photo_timestamp(file_info: Dict, credentials: Credentials) -> Optional[d
                     os.unlink(temp_path)
                     return exif_time
                 os.unlink(temp_path)
-            except Exception:
+            except OSError:
                 if os.path.exists(temp_path):
                     os.unlink(temp_path)
     except Exception as e:
@@ -158,7 +167,7 @@ def get_photo_timestamp(file_info: Dict, credentials: Credentials) -> Optional[d
                     meta_time = datetime.fromisoformat(str(image_meta[field]).replace('Z', '+00:00'))
                     print(f"  📅 Timestamp from metadata field '{field}': {meta_time}")
                     return meta_time
-                except Exception:
+                except (ValueError, AttributeError):
                     continue
     
     # Priority 4: Parse filename for timestamp (if user includes date/time in filename)
@@ -174,7 +183,7 @@ def get_photo_timestamp(file_info: Dict, credentials: Credentials) -> Optional[d
             upload_time = datetime.fromisoformat(file_info['created_time'].replace('Z', '+00:00'))
             print(f"  ⚠️ Using upload time (not original photo time): {upload_time}")
             return upload_time
-        except Exception:
+        except (ValueError, AttributeError):
             pass
 
     return None
@@ -192,14 +201,14 @@ def extract_exif_timestamp(image_path: str) -> Optional[datetime]:
                 if tag == 'DateTimeOriginal':
                     try:
                         return datetime.strptime(value, '%Y:%m:%d %H:%M:%S')
-                    except Exception:
+                    except ValueError:
                         continue
                 elif tag in ['DateTime', 'DateTimeDigitized']:
                     try:
                         return datetime.strptime(value, '%Y:%m:%d %H:%M:%S')
-                    except Exception:
+                    except ValueError:
                         continue
-    except Exception:
+    except (OSError, AttributeError):
         pass
     
     return None
@@ -222,7 +231,7 @@ def parse_timestamp_from_filename(filename: str) -> Optional[datetime]:
             try:
                 year, month, day, hour, minute, second = map(int, match.groups())
                 return datetime(year, month, day, hour, minute, second)
-            except Exception:
+            except (ValueError, OverflowError):
                 continue
     
     return None
