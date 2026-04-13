@@ -57,7 +57,7 @@ def refresh_fitbit_token():
     }
 
     response = requests.post(
-        'https://api.fitbit.com/oauth2/token', data=data, headers=headers)
+        'https://api.fitbit.com/oauth2/token', data=data, headers=headers, timeout=30)
 
     if response.status_code == 200:
         tokens = response.json()
