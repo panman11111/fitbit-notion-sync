@@ -51,7 +51,7 @@ def refresh_fitbit_token():
         'Content-Type': 'application/x-www-form-urlencoded'
     }
 
-    response = requests.post(token_url, data=token_data, headers=headers)
+    response = requests.post(token_url, data=token_data, headers=headers, timeout=30)
 
     if response.status_code == 200:
         tokens = response.json()

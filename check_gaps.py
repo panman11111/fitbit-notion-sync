@@ -20,7 +20,7 @@ def get_fitbit_member_since(access_token: str) -> date:
     headers = {'Authorization': f'Bearer {access_token}'}
 
     response = requests.get(
-        'https://api.fitbit.com/1/user/-/profile.json', headers=headers
+        'https://api.fitbit.com/1/user/-/profile.json', headers=headers, timeout=30
     )
     if response.status_code != 200:
         raise RuntimeError(f"Fitbit profile API failed: {response.text}")
