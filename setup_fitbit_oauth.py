@@ -50,7 +50,7 @@ def setup_fitbit_oauth():
 
         print(f"Found authorization code: {code[:10]}...")
 
-    except Exception as e:
+    except (ValueError, AttributeError) as e:
         print(f"Error parsing URL: {e}")
         return False
 
