@@ -6,7 +6,7 @@ Retrieves food photos from Google Drive folder, extracts metadata, and classifie
 
 import os
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, List, Optional
 import requests
 from google.oauth2.credentials import Credentials
@@ -122,9 +122,9 @@ def get_photo_timestamp(file_info: Dict, credentials: Credentials) -> Optional[d
             original_time = datetime.fromisoformat(image_meta['time'].replace('Z', '+00:00'))
             print(f"  🕒 Original timestamp from Drive metadata: {original_time}")
             return original_time
-        except:
+        except Exception:
             pass
-    
+
     # Priority 2: Download and extract EXIF data (most reliable for original timestamp)
     try:
         download_url = f"https://www.googleapis.com/drive/v3/files/{file_info['id']}?alt=media"
@@ -143,7 +143,7 @@ def get_photo_timestamp(file_info: Dict, credentials: Credentials) -> Optional[d
                     os.unlink(temp_path)
                     return exif_time
                 os.unlink(temp_path)
-            except:
+            except Exception:
                 if os.path.exists(temp_path):
                     os.unlink(temp_path)
     except Exception as e:
@@ -158,7 +158,7 @@ def get_photo_timestamp(file_info: Dict, credentials: Credentials) -> Optional[d
                     meta_time = datetime.fromisoformat(str(image_meta[field]).replace('Z', '+00:00'))
                     print(f"  📅 Timestamp from metadata field '{field}': {meta_time}")
                     return meta_time
-                except:
+                except Exception:
                     continue
     
     # Priority 4: Parse filename for timestamp (if user includes date/time in filename)
@@ -174,9 +174,9 @@ def get_photo_timestamp(file_info: Dict, credentials: Credentials) -> Optional[d
             upload_time = datetime.fromisoformat(file_info['created_time'].replace('Z', '+00:00'))
             print(f"  ⚠️ Using upload time (not original photo time): {upload_time}")
             return upload_time
-        except:
+        except Exception:
             pass
-    
+
     return None
 
 def extract_exif_timestamp(image_path: str) -> Optional[datetime]:
@@ -192,14 +192,14 @@ def extract_exif_timestamp(image_path: str) -> Optional[datetime]:
                 if tag == 'DateTimeOriginal':
                     try:
                         return datetime.strptime(value, '%Y:%m:%d %H:%M:%S')
-                    except:
+                    except Exception:
                         continue
                 elif tag in ['DateTime', 'DateTimeDigitized']:
                     try:
                         return datetime.strptime(value, '%Y:%m:%d %H:%M:%S')
-                    except:
+                    except Exception:
                         continue
-    except:
+    except Exception:
         pass
     
     return None
@@ -222,7 +222,7 @@ def parse_timestamp_from_filename(filename: str) -> Optional[datetime]:
             try:
                 year, month, day, hour, minute, second = map(int, match.groups())
                 return datetime(year, month, day, hour, minute, second)
-            except:
+            except Exception:
                 continue
     
     return None
@@ -360,7 +360,7 @@ def format_meal_text(food_items: List[str]) -> str:
 
 if __name__ == "__main__":
     # Test the integration
-    from datetime import datetime, timedelta
+    from datetime import datetime
     
     test_date = datetime.now().strftime('%Y-%m-%d')
     print(f"🧪 Testing Drive food photo processing for {test_date}")

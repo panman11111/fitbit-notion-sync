@@ -48,15 +48,12 @@ def process_auth_code():
             
             # Update existing tokens
             lines = content.split('\n')
-            updated = False
-            
+
             for i, line in enumerate(lines):
                 if line.startswith('GOOGLE_ACCESS_TOKEN='):
                     lines[i] = f'GOOGLE_ACCESS_TOKEN={access_token}'
-                    updated = True
                 elif line.startswith('GOOGLE_REFRESH_TOKEN='):
                     lines[i] = f'GOOGLE_REFRESH_TOKEN={refresh_token}'
-                    updated = True
             
             # Add refresh token if not found
             if 'GOOGLE_REFRESH_TOKEN=' not in content:

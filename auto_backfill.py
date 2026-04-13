@@ -117,7 +117,7 @@ def main():
         if date != dates[-1]:
             time.sleep(5)
 
-    print(f"\n🎉 Backfill completed!")
+    print("\n🎉 Backfill completed!")
     print(f"📊 Results: {created} created, {updated} updated, {errors} errors")
 
     # Show remaining

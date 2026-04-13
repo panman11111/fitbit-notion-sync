@@ -3,8 +3,6 @@
 Manual sync for today's date
 """
 
-import os
-import sys
 from datetime import datetime
 from sync_fitbit_notion import get_fitbit_data, update_notion_database
 
